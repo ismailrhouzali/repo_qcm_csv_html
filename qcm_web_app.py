@@ -273,9 +273,6 @@ with st.sidebar:
             if csv_input:
                 st.session_state.last_csv_data = csv_input
                 q_list = parse_csv(csv_input)
-                random.shuffle(q_list)
-                for q in q_list:
-                    random.shuffle(q['opts']) # Shuffle options
                 st.session_state.shuffled_questions = q_list
             st.rerun()
         if st.button("🔄 Reset Quiz"):
