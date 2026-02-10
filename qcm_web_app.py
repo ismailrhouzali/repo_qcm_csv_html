@@ -144,15 +144,42 @@ def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Exame
     questions_html = ""
     answers_rows = ""
     
-    # 3. Generate content
+    # 3. Generate content with balanced shuffling
+    pos_counts = {i: 0 for i in range(6)}
     for q_idx, q in enumerate(raw_questions):
         q_num = q_idx + 1
         opts_list = q['opts_data']
+        num_opts = len(opts_list)
         
-        # Shuffle Options
         if shuffle_o:
-            random.shuffle(opts_list)
-        
+            correct_opts = [o for o in opts_list if o['is_correct']]
+            distractors = [o for o in opts_list if not o['is_correct']]
+            k = len(correct_opts)
+            
+            # Identify positions 0..num_opts-1 sorted by how often they've been correct
+            # Add random secondary key to break ties randomly
+            target_pos = sorted(range(num_opts), key=lambda i: (pos_counts[i], random.random()))
+            correct_pos = target_pos[:k]
+            
+            new_opts = [None] * num_opts
+            # Place corrects
+            random.shuffle(correct_opts)
+            for i, p in enumerate(correct_pos):
+                new_opts[p] = correct_opts[i]
+                pos_counts[p] += 1
+            # Place distractors
+            random.shuffle(distractors)
+            d_ptr = 0
+            for i in range(num_opts):
+                if new_opts[i] is None:
+                    new_opts[i] = distractors[d_ptr]
+                    d_ptr += 1
+            opts_list = new_opts
+        else:
+            # Purely for counting if not shuffling
+            for i, opt in enumerate(opts_list):
+                if opt['is_correct']: pos_counts[i] += 1
+
         # Re-map correct letters
         final_lets = ['A', 'B', 'C', 'D', 'E', 'F'][:len(opts_list)]
         new_ans_letters = "".join([final_lets[i] for i, opt in enumerate(opts_list) if opt['is_correct']])
