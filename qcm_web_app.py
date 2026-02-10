@@ -79,7 +79,7 @@ def generate_answer_sheet(num_questions):
     </div>
     """
 
-def generate_html_content(csv_text, title, use_columns, add_qr=True):
+def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Examen"):
     col_css = "column-count: 3; -webkit-column-count: 3; -moz-column-count: 3; column-gap: 30px;" if use_columns else ""
     qr_code_html = f'<div style="text-align:right;"><img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=https://qcmwebapppy-bfxlibcaaelehxbv6qjyif.streamlit.app/#correction" alt="QR Correction" style="width:80px;"/> <br/><small>Scan pour correction</small></div>' if add_qr else ""
     
@@ -125,20 +125,29 @@ def generate_html_content(csv_text, title, use_columns, add_qr=True):
         questions_html += f'<div class="question-block"><div class="question-text">{q_count}. {q_text}</div><ul class="options">'
         for i, opt in enumerate(opts):
             if opt: questions_html += f'<li data-letter="{lets[i]}">{opt}</li>'
-        questions_html += "</ul></div>"
+        questions_html += "</ul>"
         
-        answers_rows += f"<tr><td>{q_count}</td><td style='font-weight:bold;'>{ans}</td><td>{expl}</td></tr>"
+        if mode == "Révision":
+            questions_html += f'<div style="margin-top: 10px; padding: 10px; background: #f0fdf4; border: 1px solid #27ae60; border-radius: 5px; font-size: 10pt;">'
+            questions_html += f'<strong>Réponse : {ans}</strong><br/>'
+            questions_html += f'<em>💡 {expl}</em>'
+            questions_html += '</div>'
+        
+        questions_html += "</div>"
+        answers_rows += f"<tr><td>{q_count}</td><td style='font-weight:bold;'>{ans}</td><td>{expl}</td>------------</tr>"
 
-    sheet_html = generate_answer_sheet(q_count)
-    
-    footer = f"""
-    </div>
-    {sheet_html}
-    <div style="page-break-before: always;" id="correction">
-        <h2>Correction</h2>
-        <table><thead><tr><th>N°</th><th>Réponse</th><th>Explication</th></tr></thead><tbody>{answers_rows}</tbody></table>
-    </div>
-</body></html>"""
+    if mode == "Examen":
+        sheet_html = generate_answer_sheet(q_count)
+        footer = f"""
+        </div>
+        {sheet_html}
+        <div style="page-break-before: always;" id="correction">
+            <h2>Correction</h2>
+            <table><thead><tr><th>N°</th><th>Réponse</th><th>Explication</th></tr></thead><tbody>{answers_rows}</tbody></table>
+        </div>
+    </body></html>"""
+    else:
+        footer = "</div></body></html>"
     
     return html_content + questions_html + footer
 
@@ -248,6 +257,7 @@ with st.sidebar:
     if mode == "📄 Créateur QCM (Original)":
         doc_title = st.text_input("Titre", "Examen NLP")
         out_name = st.text_input("Nom fichier", "qcm_output")
+        html_mode = st.radio("Style du document HTML", ["Examen", "Révision"], help="Examen: Réponses à la fin | Révision: Réponses sous chaque question")
         use_3_col = st.checkbox("3 Colonnes (Original)", value=True)
         add_qr = st.checkbox("Ajouter QR Code Correction", value=True)
     else:
@@ -299,7 +309,7 @@ if mode == "📄 Créateur QCM (Original)":
         except Exception as e:
             st.warning(f"Calcul des stats impossible : {e}")
 
-        html_out = generate_html_content(csv_in, doc_title, use_3_col, add_qr)
+        html_out = generate_html_content(csv_in, doc_title, use_3_col, add_qr, mode=html_mode)
         
         c1, c2 = st.columns(2)
         with c1:
