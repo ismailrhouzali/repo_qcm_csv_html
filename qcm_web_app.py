@@ -7,6 +7,7 @@ import time
 from collections import Counter
 import webbrowser
 import pdfkit
+import random
 from datetime import timedelta
 
 # Configuration de la page
@@ -21,6 +22,12 @@ if 'start_time' not in st.session_state:
     st.session_state.start_time = None
 if 'score_submitted' not in st.session_state:
     st.session_state.score_submitted = False
+if 'identity' not in st.session_state:
+    st.session_state.identity = {"nom": "", "prenom": "", "id": ""}
+if 'cheat_warnings' not in st.session_state:
+    st.session_state.cheat_warnings = 0
+if 'shuffled_questions' not in st.session_state:
+    st.session_state.shuffled_questions = []
 
 # --- FONCTIONS UTILES ---
 def convert_html_to_pdf(source_html):
@@ -70,7 +77,7 @@ def generate_answer_sheet(num_questions):
 
 def generate_html_content(csv_text, title, use_columns, add_qr=True):
     col_css = "column-count: 3; -webkit-column-count: 3; -moz-column-count: 3; column-gap: 30px;" if use_columns else ""
-    qr_code_html = f'<div style="text-align:right;"><img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=Correction_{title.replace(" ", "_")}#correction" alt="QR Correction" style="width:80px;"/> <br/><small>Scan pour correction</small></div>' if add_qr else ""
+    qr_code_html = f'<div style="text-align:right;"><img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=https://qcmwebapppy-bfxlibcaaelehxbv6qjyif.streamlit.app/#correction" alt="QR Correction" style="width:80px;"/> <br/><small>Scan pour correction</small></div>' if add_qr else ""
     
     html_content = f"""<!DOCTYPE html>
 <html lang="fr">
@@ -163,8 +170,19 @@ def parse_csv(text):
         data.append(q)
     return data
 
-def generate_result_report(questions, user_answers, score, title):
-    """Génère le HTML du rapport de résultats personnalisé"""
+def generate_result_report(questions, user_answers, score, title, identity=None, cheat_warnings=0):
+    """Génère le HTML du rapport de résultats personnalisé avec identité et stats de triche"""
+    from datetime import datetime
+    now = datetime.now().strftime("%d/%m/%Y %H:%M")
+    name = f"{identity['prenom']} {identity['nom']}" if identity and identity['nom'] else "Étudiant Anonyme"
+    user_id = f" (ID: {identity['id']})" if identity and identity['id'] else ""
+    
+    warnings_html = ""
+    if cheat_warnings > 0:
+        warnings_html = f'<p style="color:red; font-weight:bold;">⚠️ ALERTES SÉCURITÉ (Sorties d\'onglet) : {cheat_warnings}</p>'
+    else:
+        warnings_html = '<p style="color:green; font-weight:bold;">✅ Environnement sécurisé respecté.</p>'
+    
     rows = ""
     for idx, q in enumerate(questions):
         u_ans_letters = user_answers.get(idx, "")
@@ -177,19 +195,13 @@ def generate_result_report(questions, user_answers, score, title):
         opts_html = '<ul style="list-style:none; padding-left:0; margin: 10px 0;">'
         for i, opt in enumerate(q['opts']):
             letter = inv_mapping.get(i)
-            # Logique des cases : [X] si correct, [x] si sélectionné par erreur, [ ] sinon
             box = "[ &nbsp; ]"
-            if letter in q['ans']:
-                box = "[ X ]"
-            elif letter in u_ans_letters:
-                box = "[ x ]"
+            if letter in q['ans']: box = "[ X ]"
+            elif letter in u_ans_letters: box = "[ x ]"
             
             line_style = "margin-bottom: 4px; font-size: 10pt;"
-            if letter in q['ans']:
-                line_style += " color: #27ae60; font-weight: bold;"
-            elif letter in u_ans_letters:
-                line_style += " color: #e74c3c;"
-                
+            if letter in q['ans']: line_style += " color: #27ae60; font-weight: bold;"
+            elif letter in u_ans_letters: line_style += " color: #e74c3c;"
             opts_html += f'<li style="{line_style}">{box} {letter}. {opt}</li>'
         opts_html += "</ul>"
 
@@ -209,10 +221,17 @@ def generate_result_report(questions, user_answers, score, title):
 <style>
     body {{ font-family: 'Georgia', serif; padding: 40px; color: #333; }}
     h1 {{ color: #2c3e50; text-align: center; border-bottom: 2px solid #2c3e50; }}
-    .score-box {{ background: #f8f9fa; border: 2px solid #2c3e50; padding: 20px; text-align: center; font-size: 18pt; margin-bottom: 30px; }}
+    .header-box {{ background: #f8f9fa; padding: 15px; border: 1px solid #ddd; margin-bottom: 30px; border-radius: 8px; }}
+    .score-box {{ background: #eef9f0; border: 2px solid #27ae60; padding: 20px; text-align: center; font-size: 18pt; margin-bottom: 30px; border-radius: 8px; }}
 </style></head><body>
-    <h1>Rapport de Résultats : {title}</h1>
+    <h1>Rapport d'Examen : {title}</h1>
+    <div class="header-box">
+        <p><strong>Candidat :</strong> {name}{user_id}</p>
+        <p><strong>Date de passage :</strong> {now}</p>
+        {warnings_html}
+    </div>
     <div class="score-box">Score Global : <strong>{score} / {len(questions)}</strong> ({(score/len(questions)*100):.1f}%)</div>
+    <hr style="border: 0; border-top: 1px solid #eee; margin-bottom: 30px;">
     {rows}
 </body></html>"""
     return html
@@ -229,11 +248,30 @@ with st.sidebar:
         add_qr = st.checkbox("Ajouter QR Code Correction", value=True)
     else:
         time_limit = st.number_input("Limite de temps (min)", 1, 120, 20)
-        if st.button("🚀 DÉMARRER LE QUIZ"):
+        
+        # Validation d'identité
+        id_ready = st.session_state.identity["nom"] and st.session_state.identity["prenom"] and st.session_state.identity["id"]
+        
+        if not id_ready:
+            st.warning("⚠️ Veuillez remplir vos informations (Nom, Prénom, ID) dans la zone centrale avant de démarrer.")
+            
+        if st.button("🚀 DÉMARRER LE QUIZ", disabled=not id_ready):
             st.session_state.quiz_started = True
             st.session_state.start_time = time.time()
             st.session_state.user_answers = {}
             st.session_state.score_submitted = False
+            st.session_state.cheat_warnings = 0
+            
+            # --- SHUFFLING LOGIC ---
+            csv_input = st.session_state.get("csv_source_input", "")
+            if csv_input:
+                st.session_state.last_csv_data = csv_input
+                q_list = parse_csv(csv_input)
+                random.shuffle(q_list)
+                for q in q_list:
+                    random.shuffle(q['opts']) # Shuffle options
+                st.session_state.shuffled_questions = q_list
+            st.rerun()
         if st.button("🔄 Reset Quiz"):
             st.session_state.quiz_started = False
             st.rerun()
@@ -279,58 +317,124 @@ else:
     
     # Hide source area if quiz is running to feel like an exam
     if not st.session_state.quiz_started:
-        csv_quiz = st.text_area("Source CSV du Quiz", height=150, help="Collez le contenu CSV ici avant de démarrer.")
+        csv_quiz = st.text_area("Source CSV du Quiz", height=150, 
+                                help="Collez le contenu CSV ici avant de démarrer.",
+                                key="csv_source_input")
+        
+        st.subheader("👤 Identification du Candidat")
+        col_id1, col_id2 = st.columns(2)
+        st.session_state.identity["nom"] = col_id1.text_input("Nom", value=st.session_state.identity["nom"])
+        st.session_state.identity["prenom"] = col_id2.text_input("Prénom", value=st.session_state.identity["prenom"])
+        st.session_state.identity["id"] = st.text_input("Numéro d'étudiant / ID", value=st.session_state.identity["id"])
     else:
-        # Keep data in session or re-parse from hidden area
         csv_quiz = st.session_state.get('last_csv_data', "")
-        if not csv_quiz: # Fallback if first run
+        if not csv_quiz:
              st.warning("Veuillez réinitialiser et coller le CSV.")
              st.stop()
 
     if csv_quiz:
         st.session_state.last_csv_data = csv_quiz
-        questions = parse_csv(csv_quiz)
+        # Use shuffled questions if available, otherwise fallback to parsing
+        if st.session_state.quiz_started and st.session_state.shuffled_questions:
+            questions = st.session_state.shuffled_questions
+        else:
+            questions = parse_csv(csv_quiz)
+            
+        num_q = len(questions)
         
         if st.session_state.quiz_started:
+            # --- ANTI-CHEAT SCRIPTS (JS & CSS) ---
+            # Disables right-click, copy, selection and tracks tab switch
+            st.markdown("""
+                <script>
+                // Tab Focus Detection
+                var warningSent = false;
+                document.addEventListener('visibilitychange', function() {
+                    if (document.visibilityState === 'hidden') {
+                        // Using a simple alert for immediate feedback
+                        // Note: Streamlit doesn't natively catch JS alerts to update state easily
+                        // but this serves as a strong visual deterrent.
+                        alert("⚠️ ATTENTION : La sortie de l'onglet est interdite durant l'examen ! C'est une tentative de fraude détectée.");
+                    }
+                });
+                
+                // Disable Right-Click
+                document.addEventListener('contextmenu', event => event.preventDefault());
+                
+                // Disable Keyboard Shortcuts (F12, Ctrl+Shift+I, Ctrl+U, etc.)
+                document.onkeydown = function(e) {
+                    if(e.keyCode == 123) return false;
+                    if(e.ctrlKey && e.shiftKey && e.keyCode == 'I'.charCodeAt(0)) return false;
+                    if(e.ctrlKey && e.shiftKey && e.keyCode == 'C'.charCodeAt(0)) return false;
+                    if(e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)) return false;
+                    if(e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) return false;
+                }
+                </script>
+                
+                <style>
+                /* Disable Text Selection */
+                body {
+                    -webkit-user-select: none;
+                    -moz-user-select: none;
+                    -ms-user-select: none;
+                    user-select: none;
+                }
+                /* Forced Background White */
+                .stApp { background-color: #ffffff !important; }
+                </style>
+            """, unsafe_allow_html=True)
+
+            # --- CALCUL PROGRESSION ---
+            answered_count = len([k for k, v in st.session_state.user_answers.items() if v != ""])
+            progress = answered_count / num_q
+            
             # Chrono logic
             elapsed = time.time() - st.session_state.start_time
             total_sec = time_limit * 60
             remaining = max(0, total_sec - elapsed)
             percent_left = (remaining / total_sec) * 100
             
-            # Timer color logic: turn red if < 10%
             timer_color = "#e74c3c" if percent_left <= 10 else "#27ae60"
             border_color = "#c0392b" if percent_left <= 10 else "#2c3e50"
 
             st.markdown(f"""
                 <style>
-                .stApp {{ background-color: #ffffff; }}
+                .stApp {{ background-color: #f4f7f6; }}
                 .stMain {{ max-width: 900px; margin: 0 auto; }}
                 .sticky-timer {{
-                    position: fixed;
-                    top: 60px;
-                    right: 20px;
-                    background-color: {timer_color};
-                    color: white;
-                    padding: 15px 25px;
-                    border-radius: 12px;
-                    z-index: 1001;
-                    font-weight: bold;
-                    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-                    font-size: 16pt;
-                    border: 3px solid {border_color};
-                    transition: all 0.5s ease;
+                    position: fixed; top: 60px; right: 20px;
+                    background-color: {timer_color}; color: white;
+                    padding: 15px 25px; border-radius: 12px; z-index: 1001;
+                    font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+                    font-size: 16pt; border: 3px solid {border_color}; transition: all 0.5s ease;
                 }}
                 .exam-card {{
-                    background: #fff;
-                    padding: 25px;
-                    border-radius: 10px;
-                    border: 1px solid #eee;
-                    margin-bottom: 25px;
-                    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+                    background: #fff; padding: 25px; border-radius: 12px;
+                    border: 1px solid #e0e0e0; margin-bottom: 25px;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
                 }}
+                .nav-btn {{
+                    display: inline-block; width: 35px; height: 35px;
+                    line-height: 35px; text-align: center; margin: 2px;
+                    border-radius: 4px; border: 1px solid #ddd;
+                    font-size: 10pt; font-weight: bold; text-decoration: none; color: #333;
+                }}
+                .nav-answered {{ background-color: #27ae60 !important; color: white !important; border-color: #219150 !important; }}
                 </style>
             """, unsafe_allow_html=True)
+
+            # --- SIDEBAR NAVIGATOR ---
+            with st.sidebar:
+                st.markdown("---")
+                st.subheader("📍 Navigateur")
+                cols_nav = st.columns(5)
+                for i in range(num_q):
+                    is_ans = st.session_state.user_answers.get(i, "") != ""
+                    cls = "nav-btn nav-answered" if is_ans else "nav-btn"
+                    cols_nav[i % 5].markdown(f'<a href="#question-{i+1}" class="{cls}">{i+1}</a>', unsafe_allow_html=True)
+                
+                st.markdown(f"**Progression : {answered_count}/{num_q}**")
+                st.progress(progress)
 
             # Display Sticky Timer
             st.markdown(f'<div class="sticky-timer">⏳ {str(timedelta(seconds=int(remaining)))}</div>', unsafe_allow_html=True)
@@ -339,8 +443,9 @@ else:
                 st.error("⌛ TEMPS ÉCOULÉ !")
                 st.session_state.score_submitted = True
             
-            # Render questions in "Exam View"
+            # Render questions
             for idx, q in enumerate(questions):
+                st.markdown(f'<div id="question-{idx+1}"></div>', unsafe_allow_html=True)
                 with st.container():
                     st.markdown(f'<div class="exam-card">', unsafe_allow_html=True)
                     st.markdown(f"### Question {idx+1}")
@@ -353,18 +458,32 @@ else:
                     if is_multi:
                         st.caption("*(Plusieurs réponses possibles)*")
                         for i, l in enumerate(letters):
-                            if st.checkbox(f"{l}. {q['opts'][i]}", key=f"q{idx}_{l}"):
+                            prev_val = l in st.session_state.user_answers.get(idx, "")
+                            if st.checkbox(f"{l}. {q['opts'][i]}", key=f"q{idx}_{l}", value=prev_val):
                                 selected.append(l)
                     else:
+                        prev_idx = None
+                        current_ans = st.session_state.user_answers.get(idx, "")
+                        if current_ans:
+                            try: prev_idx = letters.index(current_ans)
+                            except: pass
+                        
                         choice = st.radio(f"Selection Q{idx+1}", 
                                          [f"{l}. {q['opts'][i]}" for i, l in enumerate(letters)],
-                                         index=None, key=f"q{idx}", label_visibility="collapsed")
+                                         index=prev_idx, key=f"q{idx}", label_visibility="collapsed")
                         if choice: selected = [choice[0]]
                     
                     st.session_state.user_answers[idx] = "".join(sorted(selected))
                     st.markdown('</div>', unsafe_allow_html=True)
-                
-            if st.button("🏁 VALIDER MON EXAMEN", type="primary", use_container_width=True) or st.session_state.score_submitted:
+            
+            # --- VALIDATION STEP ---
+            st.markdown("---")
+            if answered_count < num_q:
+                st.warning(f"⚠️ Il reste **{num_q - answered_count}** question(s) sans réponse.")
+            
+            confirm = st.checkbox("Je confirme avoir relu mes réponses et souhaite soumettre mon examen.")
+            
+            if st.button("🏁 VALIDER MON EXAMEN", type="primary", use_container_width=True, disabled=not confirm) or st.session_state.score_submitted:
                 st.session_state.quiz_started = False
                 st.session_state.score_submitted = True
                 
@@ -375,25 +494,28 @@ else:
                 
                 st.balloons()
                 st.markdown(f"""
-                    <div style="text-align:center; padding:30px; background:#f0f7f4; border-radius:15px; border:2px solid #27ae60;">
-                        <h1 style="color:#27ae60; margin:0;">SCORE FINAL : {score} / {len(questions)}</h1>
-                        <p style="font-size:16pt;">Résultat : <strong>{(score/len(questions)*100):.1f}%</strong></p>
+                    <div style="text-align:center; padding:30px; background:#f0f7f4; border-radius:15px; border:2px solid #27ae60; margin-bottom: 20px;">
+                        <h1 style="color:#27ae60; margin:0;">SCORE FINAL : {score} / {num_q}</h1>
+                        <p style="font-size:16pt;">Candidat : <strong>{st.session_state.identity['prenom']} {st.session_state.identity['nom']}</strong></p>
+                        <p style="font-size:14pt;">Taux de réussite : <strong>{(score/num_q*100):.1f}%</strong></p>
                     </div>
                 """, unsafe_allow_html=True)
                 
                 # --- GENERATION PDF RÉSULTATS ---
-                result_html = generate_result_report(questions, st.session_state.user_answers, score, "Flash Quiz Result")
+                result_html = generate_result_report(questions, st.session_state.user_answers, score, "Examen Officiel", 
+                                                     identity=st.session_state.identity, 
+                                                     cheat_warnings=st.session_state.cheat_warnings)
                 result_pdf = convert_html_to_pdf(result_html)
                 if result_pdf:
-                    st.download_button("📄 TÉLÉCHARGER LE RAPPORT COMPLET (PDF)", result_pdf, "resultats_examen.pdf", mime="application/pdf", use_container_width=True)
+                    st.download_button("📄 TÉLÉCHARGER MON COMPTE-RENDU (PDF)", result_pdf, f"resultats_{st.session_state.identity['nom']}.pdf", mime="application/pdf", use_container_width=True)
                 
                 st.subheader("📝 Correction détaillée")
                 for idx, q in enumerate(questions):
-                    u_ans = st.session_state.user_answers.get(idx, "NULL")
+                    u_ans = st.session_state.user_answers.get(idx, "") or "NULL"
                     if u_ans == q['ans']:
                         st.success(f"**Q{idx+1}**: Correct ! Votre réponse : {u_ans}")
                     else:
                         st.error(f"**Q{idx+1}**: Incorrect. Votre réponse : {u_ans} | Correcte : {q['ans']}")
                         st.info(f"💡 **Explication** : {q['expl']}")
         else:
-            st.info("👋 Prêt à commencer ? Collez votre CSV ci-dessus, puis cliquez sur **🚀 DÉMARRER LE QUIZ** dans la barre latérale.")
+            st.info("👋 Prêt à commencer l'examen ? Remplissez vos informations et cliquez sur **🚀 DÉMARRER LE QUIZ** dans la barre latérale.")
