@@ -28,6 +28,10 @@ if 'cheat_warnings' not in st.session_state:
     st.session_state.cheat_warnings = 0
 if 'shuffled_questions' not in st.session_state:
     st.session_state.shuffled_questions = []
+if 'current_q_idx' not in st.session_state:
+    st.session_state.current_q_idx = 0
+if 'validated_current' not in st.session_state:
+    st.session_state.validated_current = False
 
 # --- FONCTIONS UTILES ---
 def convert_html_to_pdf(source_html):
@@ -261,6 +265,8 @@ with st.sidebar:
             st.session_state.user_answers = {}
             st.session_state.score_submitted = False
             st.session_state.cheat_warnings = 0
+            st.session_state.current_q_idx = 0
+            st.session_state.validated_current = False
             
             # --- SHUFFLING LOGIC ---
             csv_input = st.session_state.get("csv_source_input", "")
@@ -443,23 +449,29 @@ else:
                 st.error("⌛ TEMPS ÉCOULÉ !")
                 st.session_state.score_submitted = True
             
-            # Render questions
-            for idx, q in enumerate(questions):
+            # Render current question
+            if st.session_state.current_q_idx < num_q:
+                idx = st.session_state.current_q_idx
+                q = questions[idx]
+                
                 st.markdown(f'<div id="question-{idx+1}"></div>', unsafe_allow_html=True)
                 with st.container():
                     st.markdown(f'<div class="exam-card">', unsafe_allow_html=True)
-                    st.markdown(f"### Question {idx+1}")
+                    st.markdown(f"### Question {idx+1} / {num_q}")
                     st.markdown(f"**{q['text']}**")
                     
                     letters = ['A', 'B', 'C', 'D', 'E', 'F'][:len(q['opts'])]
                     is_multi = len(q['ans']) > 1
                     
                     selected = []
+                    # Disable inputs if validated to prevent changes after seeing answer
+                    disabled = st.session_state.validated_current
+                    
                     if is_multi:
                         st.caption("*(Plusieurs réponses possibles)*")
                         for i, l in enumerate(letters):
                             prev_val = l in st.session_state.user_answers.get(idx, "")
-                            if st.checkbox(f"{l}. {q['opts'][i]}", key=f"q{idx}_{l}", value=prev_val):
+                            if st.checkbox(f"{l}. {q['opts'][i]}", key=f"q{idx}_{l}", value=prev_val, disabled=disabled):
                                 selected.append(l)
                     else:
                         prev_idx = None
@@ -470,23 +482,44 @@ else:
                         
                         choice = st.radio(f"Selection Q{idx+1}", 
                                          [f"{l}. {q['opts'][i]}" for i, l in enumerate(letters)],
-                                         index=prev_idx, key=f"q{idx}", label_visibility="collapsed")
+                                         index=prev_idx, key=f"q{idx}", label_visibility="collapsed", disabled=disabled)
                         if choice: selected = [choice[0]]
                     
-                    st.session_state.user_answers[idx] = "".join(sorted(selected))
+                    if not disabled:
+                        st.session_state.user_answers[idx] = "".join(sorted(selected))
+                    
+                    st.markdown('---')
+                    
+                    if not st.session_state.validated_current:
+                        if st.button("✔️ VALIDER POUR VOIR LA RÉPONSE", type="primary", use_container_width=True):
+                            st.session_state.validated_current = True
+                            st.rerun()
+                    else:
+                        # SHOW FEEDBACK
+                        u_ans = st.session_state.user_answers.get(idx, "") or "NULL"
+                        if u_ans == q['ans']:
+                            st.success(f"✅ Correct ! La réponse était : {q['ans']}")
+                        else:
+                            st.error(f"❌ Incorrect. Votre réponse : {u_ans} | Bonne réponse : {q['ans']}")
+                        
+                        st.info(f"💡 **Explication** : {q['expl']}")
+                        
+                        if idx < num_q - 1:
+                            if st.button("➡️ QUESTION SUIVANTE", type="primary", use_container_width=True):
+                                st.session_state.current_q_idx += 1
+                                st.session_state.validated_current = False
+                                st.rerun()
+                        else:
+                            if st.button("🏁 TERMINER L'EXAMEN", type="primary", use_container_width=True):
+                                st.session_state.quiz_started = False
+                                st.session_state.score_submitted = True
+                                st.rerun()
                     st.markdown('</div>', unsafe_allow_html=True)
             
-            # --- VALIDATION STEP ---
-            st.markdown("---")
-            if answered_count < num_q:
-                st.warning(f"⚠️ Il reste **{num_q - answered_count}** question(s) sans réponse.")
+            # Auto-submit if time's up is handled by score_submitted check below
             
-            confirm = st.checkbox("Je confirme avoir relu mes réponses et souhaite soumettre mon examen.")
-            
-            if st.button("🏁 VALIDER MON EXAMEN", type="primary", use_container_width=True, disabled=not confirm) or st.session_state.score_submitted:
-                st.session_state.quiz_started = False
-                st.session_state.score_submitted = True
-                
+            if st.session_state.score_submitted:
+                # Calculate final score
                 score = 0
                 for idx, q in enumerate(questions):
                     if st.session_state.user_answers.get(idx, "") == q['ans']:
@@ -501,7 +534,6 @@ else:
                     </div>
                 """, unsafe_allow_html=True)
                 
-                # --- GENERATION PDF RÉSULTATS ---
                 result_html = generate_result_report(questions, st.session_state.user_answers, score, "Examen Officiel", 
                                                      identity=st.session_state.identity, 
                                                      cheat_warnings=st.session_state.cheat_warnings)
