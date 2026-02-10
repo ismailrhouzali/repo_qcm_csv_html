@@ -347,70 +347,55 @@ else:
         num_q = len(questions)
         
         if st.session_state.quiz_started:
-            # --- ANTI-CHEAT SCRIPTS (JS & CSS) ---
-            # Disables right-click, copy, selection and tracks tab switch
-            st.markdown("""
-                <script>
-                // Tab Focus Detection
-                var warningSent = false;
-                document.addEventListener('visibilitychange', function() {
-                    if (document.visibilityState === 'hidden') {
-                        // Using a simple alert for immediate feedback
-                        // Note: Streamlit doesn't natively catch JS alerts to update state easily
-                        // but this serves as a strong visual deterrent.
-                        alert("⚠️ ATTENTION : La sortie de l'onglet est interdite durant l'examen ! C'est une tentative de fraude détectée.");
-                    }
-                });
-                
-                // Disable Right-Click
-                document.addEventListener('contextmenu', event => event.preventDefault());
-                
-                // Disable Keyboard Shortcuts (F12, Ctrl+Shift+I, Ctrl+U, etc.)
-                document.onkeydown = function(e) {
-                    if(e.keyCode == 123) return false;
-                    if(e.ctrlKey && e.shiftKey && e.keyCode == 'I'.charCodeAt(0)) return false;
-                    if(e.ctrlKey && e.shiftKey && e.keyCode == 'C'.charCodeAt(0)) return false;
-                    if(e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)) return false;
-                    if(e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) return false;
-                }
-                </script>
-                
-                <style>
-                /* Disable Text Selection */
-                body {
-                    -webkit-user-select: none;
-                    -moz-user-select: none;
-                    -ms-user-select: none;
-                    user-select: none;
-                }
-                /* Forced Background White */
-                .stApp { background-color: #ffffff !important; }
-                </style>
-            """, unsafe_allow_html=True)
-
-            # --- CALCUL PROGRESSION ---
+            # --- CALCUL PROGRESSION & TIMER ---
             answered_count = len([k for k, v in st.session_state.user_answers.items() if v != ""])
             progress = answered_count / num_q
-            
-            # Chrono logic
             elapsed = time.time() - st.session_state.start_time
             total_sec = time_limit * 60
             remaining = max(0, total_sec - elapsed)
             percent_left = (remaining / total_sec) * 100
-            
             timer_color = "#e74c3c" if percent_left <= 10 else "#27ae60"
             border_color = "#c0392b" if percent_left <= 10 else "#2c3e50"
 
+            # --- CONSOLIDATED STYLES & SCRIPTS ---
             st.markdown(f"""
+                <script>
+                document.addEventListener('visibilitychange', function() {{
+                    if (document.visibilityState === 'hidden') {{
+                        alert("⚠️ ATTENTION : La sortie de l'onglet est interdite durant l'examen !");
+                    }}
+                }});
+                document.addEventListener('contextmenu', event => event.preventDefault());
+                document.onkeydown = function(e) {{
+                    if(e.keyCode == 123) return false;
+                    if(e.ctrlKey && e.shiftKey && (e.keyCode == 73 || e.keyCode == 67 || e.keyCode == 74)) return false;
+                    if(e.ctrlKey && e.keyCode == 85) return false;
+                }}
+                </script>
+                
                 <style>
+                .block-container {{ padding-top: 1rem !important; }}
                 .stApp {{ background-color: #f4f7f6; }}
-                .stMain {{ max-width: 900px; margin: 0 auto; }}
+                [data-testid="stHeader"] {{ background: rgba(0,0,0,0); }}
+                div[data-testid="stMarkdownContainer"] p {{ margin-bottom: 0px; }}
+                div[data-testid="stRadio"] > div[role="radiogroup"] > label,
+                div[data-testid="stCheckbox"] > label {{
+                    background: white !important; border: 1px solid #e0e0e0 !important;
+                    border-radius: 10px !important; padding: 12px 15px !important;
+                    margin-bottom: 10px !important; width: 100% !important;
+                    transition: border 0.2s, box-shadow 0.2s !important;
+                    display: flex !important; align-items: center !important;
+                }}
+                div[data-testid="stRadio"] > div[role="radiogroup"] > label:hover,
+                div[data-testid="stCheckbox"] > label:hover {{
+                    border-color: #27ae60 !important; box-shadow: 0 2px 8px rgba(0,0,0,0.05) !important;
+                }}
                 .sticky-timer {{
-                    position: fixed; top: 60px; right: 20px;
+                    position: fixed; top: 15px; right: 15px;
                     background-color: {timer_color}; color: white;
-                    padding: 15px 25px; border-radius: 12px; z-index: 1001;
+                    padding: 12px 20px; border-radius: 12px; z-index: 1001;
                     font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-                    font-size: 16pt; border: 3px solid {border_color}; transition: all 0.5s ease;
+                    font-size: 14pt; border: 3px solid {border_color};
                 }}
                 .exam-card {{
                     background: #fff; padding: 25px; border-radius: 12px;
@@ -425,8 +410,9 @@ else:
                 }}
                 .nav-answered {{ background-color: #27ae60 !important; color: white !important; border-color: #219150 !important; }}
                 </style>
+                <div class="sticky-timer">⏳ {str(timedelta(seconds=int(remaining)))}</div>
             """, unsafe_allow_html=True)
-
+            
             # --- SIDEBAR NAVIGATOR ---
             with st.sidebar:
                 st.markdown("---")
@@ -436,12 +422,8 @@ else:
                     is_ans = st.session_state.user_answers.get(i, "") != ""
                     cls = "nav-btn nav-answered" if is_ans else "nav-btn"
                     cols_nav[i % 5].markdown(f'<a href="#question-{i+1}" class="{cls}">{i+1}</a>', unsafe_allow_html=True)
-                
                 st.markdown(f"**Progression : {answered_count}/{num_q}**")
                 st.progress(progress)
-
-            # Display Sticky Timer
-            st.markdown(f'<div class="sticky-timer">⏳ {str(timedelta(seconds=int(remaining)))}</div>', unsafe_allow_html=True)
             
             if remaining <= 0:
                 st.error("⌛ TEMPS ÉCOULÉ !")
@@ -507,14 +489,10 @@ else:
                                     border_color = "#dc3545"
                                     icon = "❌ "
                             elif is_correct:
-                                border_color = "#28a745" # Highlight correct even if not chosen
+                                border_color = "#28a745" 
                                 bg_color = "#f0fff4"
                             
-                            options_html += f"""
-                            <div style="padding: 12px; margin-bottom: 8px; border: 1px solid {border_color}; border-radius: 8px; background-color: {bg_color}; color: {text_color}; font-size: 11pt;">
-                                <strong>{l}.</strong> {q['opts'][i]} <span style="float: right;">{icon}</span>
-                            </div>
-                            """
+                            options_html += f'<div style="padding: 12px; margin-bottom: 10px; border: 1px solid {border_color}; border-radius: 10px; background-color: {bg_color}; color: {text_color}; font-size: 11pt;"><strong>{l}.</strong> {q["opts"][i]} <span style="float: right;">{icon}</span></div>'
                         options_html += "</div>"
                         st.markdown(options_html, unsafe_allow_html=True)
                     
