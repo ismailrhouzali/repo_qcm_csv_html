@@ -316,7 +316,8 @@ if mode == "📄 Créateur QCM (Original)":
             st.components.v1.html(html_out, height=600, scrolling=True)
 
 else:
-    st.header("⚡ Mode Quiz Flash Interactif")
+    if not st.session_state.quiz_started:
+        st.header("⚡ Mode Quiz Flash Interactif")
     
     # Hide source area if quiz is running to feel like an exam
     if not st.session_state.quiz_started:
@@ -451,7 +452,6 @@ else:
                 idx = st.session_state.current_q_idx
                 q = questions[idx]
                 
-                st.markdown(f'<div id="question-{idx+1}"></div>', unsafe_allow_html=True)
                 with st.container():
                     st.markdown(f'<div class="exam-card">', unsafe_allow_html=True)
                     st.markdown(f"### Question {idx+1} / {num_q}")
@@ -464,26 +464,59 @@ else:
                     # Disable inputs if validated to prevent changes after seeing answer
                     disabled = st.session_state.validated_current
                     
-                    if is_multi:
-                        st.caption("*(Plusieurs réponses possibles)*")
-                        for i, l in enumerate(letters):
-                            prev_val = l in st.session_state.user_answers.get(idx, "")
-                            if st.checkbox(f"{l}. {q['opts'][i]}", key=f"q{idx}_{l}", value=prev_val, disabled=disabled):
-                                selected.append(l)
-                    else:
-                        prev_idx = None
-                        current_ans = st.session_state.user_answers.get(idx, "")
-                        if current_ans:
-                            try: prev_idx = letters.index(current_ans)
-                            except: pass
-                        
-                        choice = st.radio(f"Selection Q{idx+1}", 
-                                         [f"{l}. {q['opts'][i]}" for i, l in enumerate(letters)],
-                                         index=prev_idx, key=f"q{idx}", label_visibility="collapsed", disabled=disabled)
-                        if choice: selected = [choice[0]]
-                    
                     if not disabled:
+                        if is_multi:
+                            st.caption("*(Plusieurs réponses possibles)*")
+                            for i, l in enumerate(letters):
+                                prev_val = l in st.session_state.user_answers.get(idx, "")
+                                if st.checkbox(f"{l}. {q['opts'][i]}", key=f"q{idx}_{l}", value=prev_val):
+                                    selected.append(l)
+                        else:
+                            prev_idx = None
+                            current_ans = st.session_state.user_answers.get(idx, "")
+                            if current_ans:
+                                try: prev_idx = letters.index(current_ans)
+                                except: pass
+                            
+                            choice = st.radio(f"Selection Q{idx+1}", 
+                                             [f"{l}. {q['opts'][i]}" for i, l in enumerate(letters)],
+                                             index=prev_idx, key=f"q{idx}", label_visibility="collapsed")
+                            if choice: selected = [choice[0]]
+                        
                         st.session_state.user_answers[idx] = "".join(sorted(selected))
+                    else:
+                        # RENDER COLORED FEEDBACK (STATIC HTML)
+                        u_ans = st.session_state.user_answers.get(idx, "")
+                        options_html = '<div style="margin: 15px 0;">'
+                        for i, l in enumerate(letters):
+                            is_correct = l in q['ans']
+                            is_chosen = l in u_ans
+                            
+                            bg_color = "transparent"
+                            border_color = "#ddd"
+                            icon = ""
+                            text_color = "#333"
+                            
+                            if is_chosen:
+                                if is_correct:
+                                    bg_color = "#d4edda"
+                                    border_color = "#28a745"
+                                    icon = "✅ "
+                                else:
+                                    bg_color = "#f8d7da"
+                                    border_color = "#dc3545"
+                                    icon = "❌ "
+                            elif is_correct:
+                                border_color = "#28a745" # Highlight correct even if not chosen
+                                bg_color = "#f0fff4"
+                            
+                            options_html += f"""
+                            <div style="padding: 12px; margin-bottom: 8px; border: 1px solid {border_color}; border-radius: 8px; background-color: {bg_color}; color: {text_color}; font-size: 11pt;">
+                                <strong>{l}.</strong> {q['opts'][i]} <span style="float: right;">{icon}</span>
+                            </div>
+                            """
+                        options_html += "</div>"
+                        st.markdown(options_html, unsafe_allow_html=True)
                     
                     st.markdown('---')
                     
