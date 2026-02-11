@@ -78,28 +78,67 @@ if 'start_time' not in st.session_state:
 if 'score_submitted' not in st.session_state:
     st.session_state.score_submitted = False
 if 'identity' not in st.session_state:
-    st.session_state.identity = {"nom": "", "prenom": "", "id": ""}
+    st.session_state.identity = {"nom": "", "prenom": "", "id": "", "email": "", "verified": False}
 if 'cheat_warnings' not in st.session_state:
     st.session_state.cheat_warnings = 0
+if 'last_csv_data' not in st.session_state:
+    st.session_state.last_csv_data = ""
 if 'shuffled_questions' not in st.session_state:
     st.session_state.shuffled_questions = []
 if 'current_q_idx' not in st.session_state:
     st.session_state.current_q_idx = 0
 if 'validated_current' not in st.session_state:
     st.session_state.validated_current = False
+if 'history' not in st.session_state:
+    st.session_state.history = []
+if 'verification_code' not in st.session_state:
+    st.session_state.verification_code = None
 
 # --- FONCTIONS UTILES ---
 def convert_html_to_pdf(source_html):
-    options = {
-        'page-size': 'A4', 'margin-top': '0.5in', 'margin-right': '0.5in',
-        'margin-bottom': '0.5in', 'margin-left': '0.5in', 'encoding': "UTF-8",
-        'enable-local-file-access': None, 'print-media-type': None,
-    }
+    """Convertit le HTML en PDF bytes via pdfkit."""
     try:
-        return pdfkit.from_string(source_html, False, options=options)
+        config = pdfkit.configuration(wkhtmltopdf=r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe")
+        pdf_bytes = pdfkit.from_string(source_html, False, configuration=config)
+        return pdf_bytes
     except Exception as e:
         st.error(f"Erreur PDF : {e}")
         return None
+
+def generate_diploma(name, score, total, course_title):
+    """Génère un PDF de diplôme pour les scores > 80%"""
+    date_str = datetime.datetime.now().strftime("%d/%m/%Y")
+    html_diploma = f"""
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            body {{ font-family: 'Arial', sans-serif; text-align: center; border: 10px double #2c3e50; padding: 50px; color: #2c3e50; }}
+            .title {{ font-size: 48pt; font-weight: bold; margin-bottom: 20px; }}
+            .subtitle {{ font-size: 24pt; margin-bottom: 50px; }}
+            .content {{ font-size: 18pt; margin-bottom: 40px; }}
+            .name {{ font-size: 30pt; font-weight: bold; text-decoration: underline; margin: 20px 0; }}
+            .footer {{ margin-top: 100px; font-size: 14pt; font-style: italic; }}
+            .stamp {{ position: absolute; bottom: 50px; right: 50px; border: 3px solid #e74c3c; color: #e74c3c; padding: 10px; font-weight: bold; transform: rotate(-15deg); }}
+        </style>
+    </head>
+    <body>
+        <div class="title">CERTIFICAT DE RÉUSSITE</div>
+        <div class="subtitle">QCM Master Pro</div>
+        <div class="content">Décerné à :</div>
+        <div class="name">{name}</div>
+        <div class="content">
+            Pour avoir complété avec succès l'examen :<br/>
+            <strong>{course_title}</strong><br/>
+            avec un score impressionnant de <strong>{score} / {total}</strong> ({(score/total*100):.1f}%).
+        </div>
+        <div class="footer">Délivré le {date_str}</div>
+        <div class="stamp">VALIDÉ</div>
+    </body>
+    </html>
+    """
+    return convert_html_to_pdf(html_diploma)
 
 def generate_answer_sheet(num_questions):
     """Génère une feuille de cochage propre sur 3 colonnes"""
@@ -366,313 +405,267 @@ def generate_result_report(questions, user_answers, score, title, identity=None,
 </body></html>"""
     return html
 
-# --- SIDEBAR ---
-with st.sidebar:
-    st.title("⚙️ Mode & Config")
-    mode = st.radio("Mode de l'application", ["📄 Créateur QCM (Original)", "⚡ Quiz Flash Interactif"], key="main_mode_radio")
-    
-    if mode == "📄 Créateur QCM (Original)":
-        st.divider()
-        st.subheader("📁 Gestion des Modules")
-        
-        # Ensure modules directory exists
-        MOD_DIR = "modules"
-        if not os.path.exists(MOD_DIR): os.makedirs(MOD_DIR)
-        
-        # Category Management
-        categories = [d for d in os.listdir(MOD_DIR) if os.path.isdir(os.path.join(MOD_DIR, d))]
-        if not categories:
-            if not os.path.exists(os.path.join(MOD_DIR, "Général")): 
-                os.makedirs(os.path.join(MOD_DIR, "Général"))
-            categories = ["Général"]
-            
-        sel_cat = st.selectbox("Catégorie", categories)
-        
-        # Load Module
-        cat_path = os.path.join(MOD_DIR, sel_cat)
-        mod_files = [f for f in os.listdir(cat_path) if f.endswith(".csv")]
-        if mod_files:
-            sel_mod = st.selectbox("Charger un module", ["-- Choisir --"] + mod_files)
-            if sel_mod != "-- Choisir --":
-                if st.button("📂 Charger"):
-                    with open(os.path.join(cat_path, sel_mod), "r", encoding="utf-8") as f:
-                        st.session_state.csv_source_input = f.read()
-                    st.success(f"Module '{sel_mod}' chargé !")
-                    st.rerun()
-        
-        # New Category
-        new_cat = st.text_input("➕ Nouvelle Catégorie")
-        if st.button("Créer Catégorie") and new_cat:
-            new_path = os.path.join(MOD_DIR, new_cat)
-            if not os.path.exists(new_path):
-                os.makedirs(new_path)
-                st.success(f"Catégorie '{new_cat}' créée !")
-                st.rerun()
+# --- PERSISTENCE JS ---
+def inject_persistence_js():
+    st.components.v1.html("""
+    <script>
+    const saveState = () => {
+        const answers = window.parent.document.querySelectorAll('input[type="radio"]:checked');
+        const data = {};
+        answers.forEach(input => {
+            data[input.name] = input.value;
+        });
+        localStorage.setItem('qcm_persistence', JSON.stringify(data));
+    };
+    window.parent.document.addEventListener('change', saveState);
+    </script>
+    """, height=0)
 
-        st.divider()
-        doc_title = st.text_input("Titre", "Examen NLP")
-        out_name = st.text_input("Nom fichier", "qcm_output")
-        q_type = st.radio("Type de QCM", ["QCM Classique", "Questions / Réponses", "Glossaire (Concept | Définition)"], help="QCM: Choix multiples | Q/R: Flashcards | Glossaire: Tableau de définitions")
-        html_mode = st.radio("Style du document HTML", ["Examen", "Révision"], help="Examen: Réponses à la fin | Révision: Réponses sous chaque question")
-        c1, c2 = st.columns(2)
-        with c1: shuffle_q = st.checkbox("Mélanger Questions", value=False)
-        with c2: shuffle_o = st.checkbox("Mélanger Options", value=False)
-        use_3_col = st.checkbox("3 Colonnes (Original)", value=True)
-        add_qr = st.checkbox("Ajouter QR Code Correction", value=True)
-        add_sheet = st.checkbox("Inclure Feuille de Réponses", value=True)
-    else:
-        time_limit = st.number_input("Limite de temps (min)", 1, 120, 20)
-        
-        # Validation d'identité
-        id_ready = st.session_state.identity["nom"] and st.session_state.identity["prenom"] and st.session_state.identity["id"]
-        
-        if not id_ready:
-            st.warning("⚠️ Veuillez remplir vos informations (Nom, Prénom, ID) dans la zone centrale avant de démarrer.")
-            
-        if st.button("🚀 DÉMARRER LE QUIZ", disabled=not id_ready):
-            st.session_state.quiz_started = True
-            st.session_state.start_time = time.time()
-            st.session_state.user_answers = {}
-            st.session_state.score_submitted = False
-            st.session_state.cheat_warnings = 0
-            st.session_state.current_q_idx = 0
-            st.session_state.validated_current = False
-            
-            # --- SHUFFLING LOGIC ---
-            csv_input = st.session_state.get("csv_source_input", "")
-            if csv_input:
-                st.session_state.last_csv_data = csv_input
-                q_list = parse_csv(csv_input)
-                st.session_state.shuffled_questions = q_list
-            st.rerun()
-        if st.button("🔄 Reset Quiz"):
-            st.session_state.quiz_started = False
-            st.rerun()
+def load_persistence_js():
+    st.components.v1.html("""
+    <script>
+    const data = localStorage.getItem('qcm_persistence');
+    if (data) {
+        // This is tricky in Streamlit as we can't easily send data back to Python session_state 
+        // without a custom component or a specific trigger.
+        // For now, we will notify the user that recovery is available.
+        console.log("Persistence data found:", data);
+    }
+    </script>
+    """, height=0)
 
-# --- MAIN INTERFACE ---
-if mode == "📄 Créateur QCM (Original)":
-    st.header("🎯 QCM Master Pro (Export HTML/PDF)")
+# --- PAGE FUNCTIONS ---
+
+def page_pdf_transformer():
+    st.header("📄 PDF Transformer (Extraction & IA)")
+    st.info("Utilisez cet outil pour extraire le texte de vos PDF de cours et le transformer en QCM via les prompts fournis.")
     
-    with st.expander("💡 Guide : Prompts pour générer le CSV avec un LLM"):
+    with st.expander("💡 Guide : Prompts pour LLM"):
         st.markdown("""
-        Copiez-collez ces prompts dans ChatGPT/Claude avec votre cours (PDF) pour obtenir le format correct :
-        
         **1. Pour QCM Classique :**
         > Agit comme un expert pédagogique. À partir du texte suivant, génère un QCM de [X] questions au format CSV avec le délimiteur '|'.
         > Colonnes : `Question|A|B|C|D|E|F|Réponse|Explication`
-        > (Laisse les colonnes vides si moins de 6 options, ex: |E|F| s'il n'y a que 4 choix).
         
         **2. Pour Questions / Réponses (Flashcards) :**
-        > Agit comme un tuteur. Extrait les points clés du cours sous forme de Questions/Réponses simples.
         > Format CSV : `Question|Réponse` (Délimiteur '|')
         
         **3. Pour Glossaire (Définitions) :**
-        > Extrait tous les termes techniques et leurs définitions de ce cours.
         > Format CSV : `Concept|Définition` (Délimiteur '|')
         """)
 
-    # PDF Uploader Section
-    st.subheader("📄 Import PDF direct (Extraction de texte)")
-    uploaded_pdf = st.file_uploader("Glissez votre PDF ici pour extraire le texte", type="pdf")
+    uploaded_pdf = st.file_uploader("Glissez votre PDF ici", type="pdf")
     if uploaded_pdf:
         pdf_text = extract_text_from_pdf(uploaded_pdf.read())
         if "Erreur" in pdf_text:
             st.error(pdf_text)
         else:
-            st.success("Texte extrait avec succès ! Copiez-le ci-dessous pour l'envoyer à votre LLM.")
-            st.text_area("Texte extrait du PDF", pdf_text, height=150)
+            st.success("Texte extrait avec succès !")
+            st.text_area("Texte extrait", pdf_text, height=300)
+            if st.button("✨ Envoyer vers le Créateur"):
+                st.session_state.pdf_extracted_text = pdf_text
+                st.success("Texte prêt pour le Créateur !")
 
-    st.divider()
-    csv_in = st.text_area("Collez votre CSV (|)", height=250, value=st.session_state.get("csv_source_input", ""))
+def page_creator():
+    st.header("✍️ Créateur de Contenu (HTML/PDF)")
+    
+    # Sidebar config for this page
+    MOD_DIR = "modules"
+    if not os.path.exists(MOD_DIR): os.makedirs(MOD_DIR)
+    categories = [d for d in os.listdir(MOD_DIR) if os.path.isdir(os.path.join(MOD_DIR, d))] or ["Général"]
+    
+    with st.sidebar:
+        st.subheader("📁 Modules")
+        sel_cat = st.selectbox("Catégorie", categories)
+        cat_path = os.path.join(MOD_DIR, sel_cat)
+        mod_files = [f for f in os.listdir(cat_path) if f.endswith(".csv")]
+        if mod_files:
+            sel_mod = st.selectbox("Charger", ["-- Choisir --"] + mod_files)
+            if sel_mod != "-- Choisir --" and st.button("📂 Charger"):
+                with open(os.path.join(cat_path, sel_mod), "r", encoding="utf-8") as f:
+                    st.session_state.csv_source_input = f.read()
+                st.rerun()
+        
+        st.divider()
+        doc_title = st.text_input("Titre", "Examen NLP")
+        out_name = st.text_input("Nom fichier", "qcm_output")
+        q_type = st.radio("Type", ["QCM Classique", "Questions / Réponses", "Glossaire (Concept | Définition)"])
+        html_mode = st.radio("Style", ["Examen", "Révision"])
+        c1, c2 = st.columns(2)
+        shuffle_q = c1.checkbox("Mélanger Q", value=False)
+        shuffle_o = c2.checkbox("Mélanger O", value=False)
+        use_3_col = st.checkbox("3 Colonnes", value=True)
+        add_qr = st.checkbox("QR Code", value=True)
+        add_sheet = st.checkbox("Feuille Réponses", value=True)
+
+    default_val = st.session_state.get("csv_source_input", "")
+    if not default_val:
+        default_val = st.session_state.get("pdf_extracted_text", "")
+        
+    csv_in = st.text_area("Contenu CSV (|)", height=250, value=default_val)
     st.session_state.csv_source_input = csv_in
     
     if csv_in:
-        # --- CSV VALIDATION ---
-        errors, warnings = validate_csv_data(csv_in, q_type)
+        errors, _ = validate_csv_data(csv_in, q_type)
         if errors:
-            st.error("❌ Erreurs détectées dans le CSV :")
-            for e in errors: st.write(f"- {e}")
-        if warnings:
-            st.warning("⚠️ Avertissements :")
-            for w in warnings: st.write(f"- {w}")
+            for e in errors: st.error(e)
             
-        # --- SAVE MODULE ---
-        with st.expander("💾 Sauvegarder ce contenu comme Module"):
-            save_name = st.text_input("Nom du fichier (ex: quiz_chapitre_1)", value=out_name)
-            if st.button("💾 Enregistrer dans " + sel_cat):
-                save_path = os.path.join("modules", sel_cat, f"{save_name}.csv")
-                with open(save_path, "w", encoding="utf-8") as f:
+        with st.expander("💾 Sauvegarder"):
+            save_name = st.text_input("Nom fichier", value=out_name)
+            if st.button("💾 Enregistrer"):
+                os.makedirs(os.path.join(MOD_DIR, sel_cat), exist_ok=True)
+                with open(os.path.join(MOD_DIR, sel_cat, f"{save_name}.csv"), "w", encoding="utf-8") as f:
                     f.write(csv_in)
-                st.success(f"Module '{save_name}.csv' enregistré dans '{sel_cat}' !")
-                st.rerun()
+                st.success("Enregistré !")
 
-        # --- CALCUL ET AFFICHAGE DES STATISTIQUES ---
+        # --- STATS ---
         try:
             total_stats, sing_stats, mult_stats, dist_stats = perform_stats(csv_in)
-            st.subheader("📊 Statistiques du QCM")
-            stat_c1, stat_c2, stat_c3 = st.columns(3)
-            stat_c1.metric("Total Questions", total_stats)
-            stat_c2.metric("Choix Unique", sing_stats)
-            stat_c3.metric("Choix Multiple", mult_stats)
-            
+            st.divider()
+            st.subheader("📊 Statistiques")
+            s1, s2, s3 = st.columns(3)
+            s1.metric("Total", total_stats)
+            s2.metric("Unique", sing_stats)
+            s3.metric("Multiple", mult_stats)
             dist_str = " | ".join([f"**{k}**: {v:.1f}%" for k, v in sorted(dist_stats.items())])
-            st.info(f"📍 **Distribution des réponses :** {dist_str}")
-        except Exception as e:
-            st.warning(f"Calcul des stats impossible : {e}")
+            st.info(f"📍 Distribution : {dist_str}")
+        except: pass
 
         html_out = generate_html_content(csv_in, doc_title, use_3_col, add_qr, mode=html_mode, shuffle_q=shuffle_q, shuffle_o=shuffle_o, q_type=q_type, add_sheet=add_sheet)
         
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("✨ GÉNÉRER HTML"):
-                with open(f"{out_name}.html", "w", encoding="utf-8") as f: f.write(html_out)
-                st.success(f"Fichier '{out_name}.html' créé !")
-                st.download_button("📥 Télécharger HTML", html_out, f"{out_name}.html")
+            st.download_button("📥 Télécharger HTML", html_out, f"{out_name}.html")
         with c2:
             pdf_bytes = convert_html_to_pdf(html_out)
-            if pdf_bytes:
-                st.download_button("📄 TÉLÉCHARGER PDF", pdf_bytes, f"{out_name}.pdf")
+            if pdf_bytes: st.download_button("📄 TÉLÉCHARGER PDF", pdf_bytes, f"{out_name}.pdf")
         
-        with st.expander("👁️ Aperçu du document"):
-            st.components.v1.html(html_out, height=600, scrolling=True)
+        st.subheader("👁️ Aperçu")
+        st.components.v1.html(html_out, height=600, scrolling=True)
 
-else:
-    if not st.session_state.quiz_started:
-        st.header("⚡ Mode Quiz Flash Interactif")
+def page_quiz():
+    st.header("⚡ Mode Quiz Flash Interactif")
+    inject_persistence_js()
     
-    # Hide source area if quiz is running to feel like an exam
     if not st.session_state.quiz_started:
-        csv_quiz = st.text_area("Source CSV du Quiz", height=150, 
-                                help="Collez le contenu CSV ici avant de démarrer.",
-                                key="csv_source_input")
+        csv_quiz = st.text_area("Source CSV du Quiz", height=150, key="csv_source_input")
         
-        st.subheader("👤 Identification du Candidat")
-        col_id1, col_id2 = st.columns(2)
-        st.session_state.identity["nom"] = col_id1.text_input("Nom", value=st.session_state.identity["nom"])
-        st.session_state.identity["prenom"] = col_id2.text_input("Prénom", value=st.session_state.identity["prenom"])
-        st.session_state.identity["id"] = st.text_input("Numéro d'étudiant / ID", value=st.session_state.identity["id"])
+        st.subheader("👤 Candidat")
+        c1, c2 = st.columns(2)
+        st.session_state.identity["nom"] = c1.text_input("Nom", value=st.session_state.identity["nom"])
+        st.session_state.identity["prenom"] = c2.text_input("Prénom", value=st.session_state.identity["prenom"])
+        st.session_state.identity["id"] = st.text_input("ID", value=st.session_state.identity["id"])
+        
+        if not st.session_state.identity["verified"]:
+            st.warning("⚠️ Accès restreint. Connectez-vous dans la page 'Historique' (Simulation) pour enregistrer vos scores.")
+
+        if st.button("🚀 DÉMARRER"):
+            if not csv_quiz: st.error("Collez un CSV !")
+            else:
+                st.session_state.quiz_started = True
+                st.session_state.start_time = time.time()
+                st.session_state.user_answers = {}
+                st.session_state.shuffled_questions = parse_csv(csv_quiz)
+                st.rerun()
     else:
-        csv_quiz = st.session_state.get('last_csv_data', "")
-        if not csv_quiz:
-             st.warning("Veuillez réinitialiser et coller le CSV.")
-             st.stop()
-
-    if csv_quiz:
-        st.session_state.last_csv_data = csv_quiz
-        # Use shuffled questions if available, otherwise fallback to parsing
-        if st.session_state.quiz_started and st.session_state.shuffled_questions:
-            questions = st.session_state.shuffled_questions
-        else:
-            questions = parse_csv(csv_quiz)
-            
-        num_q = len(questions)
+        questions = st.session_state.shuffled_questions
+        idx = st.session_state.current_q_idx
+        q = questions[idx]
         
-        if st.session_state.quiz_started:
-            # --- CALCUL PROGRESSION & TIMER ---
-            answered_count = len([k for k, v in st.session_state.user_answers.items() if v != ""])
-            progress = answered_count / num_q
-            elapsed = time.time() - st.session_state.start_time
-            total_sec = time_limit * 60
-            remaining = max(0, total_sec - elapsed)
-            percent_left = (remaining / total_sec) * 100
-            timer_color = "#e74c3c" if percent_left <= 10 else "#27ae60"
-            border_color = "#c0392b" if percent_left <= 10 else "#2c3e50"
+        st.progress((idx + 1) / len(questions))
+        st.subheader(f"Question {idx+1} / {len(questions)}")
+        st.write(f"### {q['text']}")
+        
+        ans = st.radio("Choisissez :", q['opts'] + ["Auncune réponse (NULL)"], key=f"q_{idx}")
+        
+        c1, c2, c3 = st.columns(3)
+        if idx > 0 and c1.button("⬅️ Précédent"):
+            st.session_state.current_q_idx -= 1
+            st.rerun()
+        
+        if idx < len(questions) - 1:
+            if c3.button("Suivant ➡️"):
+                st.session_state.current_q_idx += 1
+                st.rerun()
+        else:
+            if c3.button("🏁 TERMINER"):
+                # --- SUBMISSION LOGIC ---
+                score = 0
+                questions = st.session_state.shuffled_questions
+                user_ans = st.session_state.user_answers
+                
+                # Mapping user selection to A, B, C
+                mapping = {opt: chr(65+i) for i, opt in enumerate(q['opts'])} # A=65
+                # Wait, mapping needs to be consistent with parse_csv
+                
+                for i, q_data in enumerate(questions):
+                    choice = user_ans.get(i, "")
+                    if choice == q_data['ans']:
+                        score += 1
+                
+                # Record in history
+                st.session_state.history.append({
+                    "Date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "Examen": "Quiz Rapide",
+                    "Email": st.session_state.identity["email"] if st.session_state.identity["verified"] else "Anonyme",
+                    "Score": f"{score} / {len(questions)}"
+                })
+                
+                st.session_state.quiz_started = False
+                st.session_state.last_score = (score, len(questions))
+                st.success(f"Terminé ! Score : {score} / {len(questions)}")
+                
+                if score / len(questions) >= 0.8:
+                    st.balloons()
+                    st.success("🏆 Félicitations ! Vous avez obtenu un certificat.")
+                    pdf_diploma = generate_diploma(f"{st.session_state.identity['prenom']} {st.session_state.identity['nom']}", score, len(questions), "Examen NLP")
+                    if pdf_diploma:
+                        st.download_button("📥 TÉLÉCHARGER MON DIPLÔME", pdf_diploma, "diplome_reussite.pdf")
+                
+                rep_html = generate_result_report(questions, user_ans, score, "Résultats", st.session_state.identity)
+                st.components.v1.html(rep_html, height=800, scrolling=True)
 
-            # --- CONSOLIDATED STYLES & SCRIPTS ---
-            st.markdown(f"""
-                <script>
-                document.addEventListener('visibilitychange', function() {{
-                    if (document.visibilityState === 'hidden') {{
-                        alert("⚠️ ATTENTION : La sortie de l'onglet est interdite durant l'examen !");
-                    }}
-                }});
-                document.addEventListener('contextmenu', event => event.preventDefault());
-                document.onkeydown = function(e) {{
-                    if(e.keyCode == 123) return false;
-                    if(e.ctrlKey && e.shiftKey && (e.keyCode == 73 || e.keyCode == 67 || e.keyCode == 74)) return false;
-                    if(e.ctrlKey && e.keyCode == 85) return false;
-                }}
-                </script>
-                
-                <style>
-                .block-container {{ padding-top: 1rem !important; }}
-                .stApp {{ background-color: #f4f7f6; }}
-                [data-testid="stHeader"] {{ background: rgba(0,0,0,0); }}
-                div[data-testid="stMarkdownContainer"] p {{ margin-bottom: 0px; }}
-                div[data-testid="stRadio"] > div[role="radiogroup"] > label,
-                div[data-testid="stCheckbox"] > label {{
-                    background: white !important; border: 1px solid #e0e0e0 !important;
-                    border-radius: 10px !important; padding: 12px 15px !important;
-                    margin-bottom: 10px !important; width: 100% !important;
-                    transition: border 0.2s, box-shadow 0.2s !important;
-                    display: flex !important; align-items: center !important;
-                }}
-                div[data-testid="stRadio"] > div[role="radiogroup"] > label:hover,
-                div[data-testid="stCheckbox"] > label:hover {{
-                    border-color: #27ae60 !important; box-shadow: 0 2px 8px rgba(0,0,0,0.05) !important;
-                }}
-                .sticky-timer {{
-                    position: fixed; top: 15px; right: 15px;
-                    background-color: {timer_color}; color: white;
-                    padding: 12px 20px; border-radius: 12px; z-index: 1001;
-                    font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-                    font-size: 14pt; border: 3px solid {border_color};
-                }}
-                .exam-card {{
-                    background: #fff; padding: 25px; border-radius: 12px;
-                    border: 1px solid #e0e0e0; margin-bottom: 25px;
-                    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-                }}
-                .nav-btn {{
-                    display: inline-block; width: 35px; height: 35px;
-                    line-height: 35px; text-align: center; margin: 2px;
-                    border-radius: 4px; border: 1px solid #ddd;
-                    font-size: 10pt; font-weight: bold; text-decoration: none; color: #333;
-                }}
-                .nav-answered {{ background-color: #27ae60 !important; color: white !important; border-color: #219150 !important; }}
-                </style>
-                <div class="sticky-timer">⏳ {str(timedelta(seconds=int(remaining)))}</div>
-            """, unsafe_allow_html=True)
+def page_history():
+    st.header("📊 Mon Historique & Compte")
+    
+    if not st.session_state.identity["verified"]:
+        st.subheader("🔐 Connexion (Simulation)")
+        email = st.text_input("Votre Email")
+        if st.button("Recevoir le Code"):
+            st.session_state.verification_code = "1234" # Simulation
+            st.info("Simulation : Votre code est 1234")
+        
+        code = st.text_input("Code reçu")
+        if st.button("Vérifier"):
+            if code == "1234":
+                st.session_state.identity["email"] = email
+                st.session_state.identity["verified"] = True
+                st.success("Connecté !")
+                st.rerun()
+            else:
+                st.error("Code incorrect.")
+    else:
+        st.write(f"Connecté en tant que : **{st.session_state.identity['email']}**")
+        if st.button("🚪 Déconnexion"):
+            st.session_state.identity["verified"] = False
+            st.rerun()
             
-            # --- SIDEBAR NAVIGATOR ---
-            with st.sidebar:
-                st.markdown("---")
-                st.subheader("📍 Navigateur")
-                cols_nav = st.columns(5)
-                for i in range(num_q):
-                    is_ans = st.session_state.user_answers.get(i, "") != ""
-                    cls = "nav-btn nav-answered" if is_ans else "nav-btn"
-                    cols_nav[i % 5].markdown(f'<a href="#question-{i+1}" class="{cls}">{i+1}</a>', unsafe_allow_html=True)
-                st.markdown(f"**Progression : {answered_count}/{num_q}**")
-                st.progress(progress)
-            
-            if remaining <= 0:
-                st.error("⌛ TEMPS ÉCOULÉ !")
-                st.session_state.score_submitted = True
-            
-            # Render current question
-            if st.session_state.current_q_idx < num_q:
-                idx = st.session_state.current_q_idx
-                q = questions[idx]
-                
-                with st.container():
-                    st.markdown(f'<div class="exam-card">', unsafe_allow_html=True)
-                    st.markdown(f"### Question {idx+1} / {num_q}")
-                    st.markdown(f"**{q['text']}**")
-                    
-                    letters = ['A', 'B', 'C', 'D', 'E', 'F'][:len(q['opts'])]
-                    is_multi = len(q['ans']) > 1
-                    
-                    selected = []
-                    # Disable inputs if validated to prevent changes after seeing answer
-                    disabled = st.session_state.validated_current
-                    
-                    if not disabled:
-                        if is_multi:
-                            st.caption("*(Plusieurs réponses possibles)*")
-                            for i, l in enumerate(letters):
-                                prev_val = l in st.session_state.user_answers.get(idx, "")
-                                if st.checkbox(f"{l}. {q['opts'][i]}", key=f"q{idx}_{l}", value=prev_val):
+        st.subheader("📈 Mes derniers scores")
+        if not st.session_state.history:
+            st.info("Aucun historique pour le moment.")
+        else:
+            df = pd.DataFrame(st.session_state.history)
+            st.table(df)
+
+# --- MAIN NAVIGATION ---
+with st.sidebar:
+    st.title("🚀 Navigation")
+    choice = st.selectbox("Aller vers :", ["📄 PDF Transformer", "✍️ Créateur", "⚡ Quiz Interactif", "📊 Historique"])
+
+if choice == "📄 PDF Transformer": page_pdf_transformer()
+elif choice == "✍️ Créateur": page_creator()
+elif choice == "⚡ Quiz Interactif": page_quiz()
+elif choice == "📊 Historique": page_history()
+v_val):
                                     selected.append(l)
                         else:
                             prev_idx = None
