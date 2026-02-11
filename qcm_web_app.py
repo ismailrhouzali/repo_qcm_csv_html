@@ -1115,19 +1115,18 @@ def page_discover():
                     icons = {"QCM": "⚡", "QA": "❓", "SUM": "📝"}
                     icon = icons.get(f_type, "📄")
 
-                    st.markdown(f"""
-                    <div class="module-card">
-                        <div class="card-header">
-                            <div class="icon-box">{icon}</div>
-                            <p class="module-name">{f.replace('.csv', '').replace('.md', '')}</p>
-                        </div>
-                        <div>
-                            {f'<span class="best-score">🏆 Record : {best}</span>' if f_type == "QCM" else ""}
-                            {"<span class='in-progress'>⏳ En cours</span>" if progress else ""}
-                            <span style='color: grey; font-size: 0.8em; display: block;'>Type: {f_type}</span>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    card_html = f"""<div class="module-card">
+<div class="card-header">
+<div class="icon-box">{icon}</div>
+<p class="module-name">{f.replace('.csv', '').replace('.md', '')}</p>
+</div>
+<div>
+{f'<span class="best-score">🏆 Record : {best}</span>' if f_type == "QCM" else ""}
+{"<span class='in-progress'>⏳ En cours</span>" if progress else ""}
+<span style='color: grey; font-size: 0.8em; display: block;'>Type: {f_type}</span>
+</div>
+</div>"""
+                    st.markdown(card_html, unsafe_allow_html=True)
                     
                     # Action buttons
                     full_path = os.path.join(cat_path, f)
