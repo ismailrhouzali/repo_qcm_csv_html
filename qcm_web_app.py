@@ -125,6 +125,11 @@ def init_db():
                  (email TEXT, module_name TEXT, current_idx INTEGER, 
                   answers_json TEXT, last_updated TEXT,
                   PRIMARY KEY (email, module_name))''')
+    # Table Centralisée des Modules Pédagogiques
+    c.execute('''CREATE TABLE IF NOT EXISTS educational_modules 
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                  name TEXT, category TEXT, type TEXT, content TEXT, 
+                  created_at TEXT)''')
     conn.commit()
     conn.close()
 
@@ -181,6 +186,45 @@ def db_clear_progress(email, module_name):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("DELETE FROM quiz_progress WHERE email = ? AND module_name = ?", (email, module_name))
+    conn.commit()
+    conn.close()
+
+def db_save_module(name, category, m_type, content):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    # On vérifie si c'est un update (même nom et même catégorie)
+    c.execute("SELECT id FROM educational_modules WHERE name = ? AND category = ?", (name, category))
+    res = c.fetchone()
+    if res:
+        c.execute("UPDATE educational_modules SET content = ?, type = ?, created_at = ? WHERE id = ?", 
+                  (content, m_type, date_str, res[0]))
+    else:
+        c.execute("INSERT INTO educational_modules (name, category, type, content, created_at) VALUES (?, ?, ?, ?, ?)",
+                  (name, category, m_type, content, date_str))
+    conn.commit()
+    conn.close()
+
+def db_get_modules(m_type=None, search=""):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    query = "SELECT id, name, category, type, content, created_at FROM educational_modules WHERE 1=1"
+    params = []
+    if m_type:
+        query += " AND type = ?"
+        params.append(m_type)
+    if search:
+        query += " AND (name LIKE ? OR category LIKE ?)"
+        params.extend([f"%{search}%", f"%{search}%"])
+    c.execute(query, params)
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+def db_delete_module(m_id):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("DELETE FROM educational_modules WHERE id = ?", (m_id,))
     conn.commit()
     conn.close()
 
@@ -621,7 +665,12 @@ def page_creator():
     if not default_val:
         default_val = st.session_state.get("pdf_extracted_text", "")
         
-    csv_in = st.text_area("Contenu CSV (|)", height=250, value=default_val)
+    doc_title = st.text_input("Titre", "Examen NLP")
+    out_name = st.text_input("Nom fichier / Module", value=st.session_state.get('editing_name', "output_module"))
+    q_type = st.radio("Type", ["QCM Classique", "Questions / Réponses", "Glossaire (Concept | Définition)", "Synthèse (Markdown)"], 
+                      index=["QCM Classique", "Questions / Réponses", "Glossaire (Concept | Définition)", "Synthèse (Markdown)"].index(st.session_state.get('editing_type', "QCM Classique")))
+    
+    csv_in = st.text_area("Contenu (|)", height=250, value=st.session_state.get("csv_source_input", st.session_state.get("pdf_extracted_text", "")))
     st.session_state.csv_source_input = csv_in
     
     if csv_in:
@@ -629,14 +678,21 @@ def page_creator():
         if errors:
             for e in errors: st.error(e)
             
-        with st.expander("💾 Sauvegarder"):
-            save_name = st.text_input("Nom fichier", value=out_name)
-            if st.button("💾 Enregistrer"):
-                os.makedirs(os.path.join(MOD_DIR, sel_cat), exist_ok=True)
-                ext = ".md" if q_type == "Synthèse (Markdown)" else ".csv"
-                with open(os.path.join(MOD_DIR, sel_cat, f"{save_name}{ext}"), "w", encoding="utf-8") as f:
-                    f.write(csv_in)
-                st.success(f"Enregistré sous {save_name}{ext} !")
+        with st.expander("💾 Sauvegarder dans la Base de Données", expanded=True):
+            save_name = st.text_input("Nom unique du module", value=out_name)
+            save_cat = st.selectbox("Catégorie / Dossier", ["Matière A", "Matière B", "Général"], index=0)
+            
+            if st.button("🚀 ENREGISTRER DANS LA BD", type="primary"):
+                m_type = "QCM"
+                if "Questions" in q_type: m_type = "QA"
+                elif "Glossaire" in q_type: m_type = "DEF"
+                elif "Synthèse" in q_type: m_type = "SUM"
+                
+                db_save_module(save_name, save_cat, m_type, csv_in)
+                st.success(f"Module '{save_name}' enregistré avec succès !")
+                # Optionnel: vider pour le prochain
+                # st.session_state.csv_source_input = ""
+                # st.rerun()
 
         # --- STATS ---
         try:
@@ -1019,148 +1075,94 @@ def page_discover():
     st.markdown("""
     <style>
     .module-card {
-        background: white;
-        border-radius: 12px;
-        padding: 20px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        border: 1px solid #eee;
-        transition: transform 0.2s, box-shadow 0.2s;
-        margin-bottom: 20px;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
+        background: white; border-radius: 12px; padding: 20px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.05); border: 1px solid #f0f0f0;
+        transition: transform 0.2s; margin-bottom: 20px; min-height: 180px;
+        display: flex; flex-direction: column; justify-content: space-between;
     }
-    .module-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 8px 15px rgba(0,0,0,0.1);
-    }
-    .card-header {
-        display: flex;
-        align-items: center;
-        margin-bottom: 12px;
-        gap: 10px;
-    }
-    .icon-box {
-        background: #f0f4f8;
-        padding: 8px;
-        border-radius: 8px;
-        font-size: 1.5em;
-    }
-    .module-name {
-        font-weight: bold;
-        font-size: 1.1em;
-        color: #2c3e50;
-        margin: 0;
-    }
-    .best-score {
-        background: #fff8e1;
-        color: #f57c00;
-        padding: 4px 10px;
-        border-radius: 20px;
-        font-size: 0.85em;
-        font-weight: bold;
-        display: inline-block;
-        margin-top: 5px;
-    }
-    .in-progress {
-        background: #e3f2fd;
-        color: #1976d2;
-        padding: 4px 10px;
-        border-radius: 20px;
-        font-size: 0.85em;
-        font-weight: bold;
-        display: inline-block;
-        margin-top: 5px;
-    }
+    .module-card:hover { transform: translateY(-5px); box-shadow: 0 8px 15px rgba(0,0,0,0.08); }
+    .card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+    .icon-box { background: #f8fafc; padding: 10px; border-radius: 50%; font-size: 1.4em; }
+    .module-name { font-weight: 700; font-size: 1.05em; color: #1e293b; margin: 0; }
+    .type-badge { font-size: 0.75em; background: #f1f5f9; color: #64748b; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; font-weight: 600; }
+    .best-score { background: #fffbeb; color: #d97706; padding: 4px 12px; border-radius: 15px; font-size: 0.8em; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
-    st.header("🔍 Explorateur de Modules")
+    st.header("🔍 Explorateur de Modules (BD)")
     
-    MODULES_DIR = "modules"
-    if not os.path.exists(MODULES_DIR):
-        st.info("Aucun module créé pour le moment. Allez dans 'Créateur' pour commencer.")
+    search_q = st.text_input("🔍 Rechercher un module...", "")
+    
+    # Types filter
+    all_modules = db_get_modules(search=search_q)
+    
+    if not all_modules:
+        st.info("Aucun module trouvé dans la base de données. Utilisez le 'Créateur' pour en ajouter.")
         return
 
-    categories = [d for d in os.listdir(MODULES_DIR) if os.path.isdir(os.path.join(MODULES_DIR, d))]
+    categories = sorted(list(set([m[2] for m in all_modules if m[2]])))
+    if not categories: categories = ["Général"]
     
-    if not categories:
-        st.info("Aucun module trouvé.")
-        return
-
-    # Use tabs for categories
     tabs = st.tabs([f"📂 {cat}" for cat in categories])
     
     for i, cat in enumerate(categories):
         with tabs[i]:
-            cat_path = os.path.join(MODULES_DIR, cat)
-            files = [f for f in os.listdir(cat_path) if f.endswith('.csv')]
+            # Filter modules for this category
+            cat_modules = [m for m in all_modules if m[2] == cat]
             
-            if not files:
-                st.info("Dossier vide.")
+            if not cat_modules:
+                st.info("Catégorie vide.")
                 continue
             
-            # Grid layout for cards
             cols = st.columns(2)
-            # DÉTECTION DES FICHIERS CSV UNIQUEMENT POUR DISCOVER (QCM/QA)
-            files = [f for f in os.listdir(cat_path) if f.endswith('.csv')]
-            
-            for idx, f in enumerate(files):
+            for idx, mod in enumerate(cat_modules):
+                m_id, m_name, m_cat, m_type, m_content, m_date = mod
                 with cols[idx % 2]:
-                    # File type detection
-                    f_type = "QCM"
-                    if "_QA" in f: f_type = "QA"
-                    elif "_SUM" in f or f.endswith(".md"): f_type = "SUM"
-                    
                     best = "N/A"
                     progress = False
-                    if f_type == "QCM" and st.session_state.identity["verified"]:
-                        best = db_get_best_score(st.session_state.identity["email"], f)
-                        p_data = db_load_progress(st.session_state.identity["email"], f)
+                    if m_type == "QCM" and st.session_state.identity["verified"]:
+                        best = db_get_best_score(st.session_state.identity["email"], m_name)
+                        p_data = db_load_progress(st.session_state.identity["email"], m_name)
                         if p_data: progress = True
                     
-                    icons = {"QCM": "⚡", "QA": "❓", "SUM": "📝"}
-                    icon = icons.get(f_type, "📄")
+                    icons = {"QCM": "⚡", "QA": "❓", "DEF": "📜", "SUM": "📝"}
+                    icon = icons.get(m_type, "📄")
 
                     card_html = f"""<div class="module-card">
 <div class="card-header">
 <div class="icon-box">{icon}</div>
-<p class="module-name">{f.replace('.csv', '').replace('.md', '')}</p>
+<div>
+    <p class="module-name">{m_name}</p>
+    <span class="type-badge">{m_type}</span>
+</div>
 </div>
 <div>
-{f'<span class="best-score">🏆 Record : {best}</span>' if f_type == "QCM" else ""}
+{f'<span class="best-score">🏆 Record : {best}</span>' if m_type == "QCM" else ""}
 {"<span class='in-progress'>⏳ En cours</span>" if progress else ""}
-<span style='color: grey; font-size: 0.8em; display: block;'>Type: {f_type}</span>
 </div>
 </div>"""
                     st.markdown(card_html, unsafe_allow_html=True)
                     
-                    # Action buttons
-                    full_path = os.path.join(cat_path, f)
-                    with open(full_path, "r", encoding="utf-8") as file_data:
-                        content = file_data.read()
-                    
                     ac1, ac2 = st.columns(2)
-                    if f_type == "QCM":
-                        if ac1.button("🚀 Lancer", key=f"q_{f}_{i}"):
-                            st.session_state.auto_load_csv = content
-                            st.session_state.quiz_mod = f
+                    if m_type == "QCM":
+                        if ac1.button("🚀 Lancer", key=f"launch_{m_id}"):
+                            st.session_state.auto_load_csv = m_content
+                            st.session_state.quiz_mod = m_name
                             st.session_state.current_page = "⚡ Quiz Interactif"
                             st.rerun()
                     else:
-                        if ac1.button("👁️ Voir", key=f"v_{f}_{i}"):
-                            st.session_state.view_content = {"name": f, "content": content, "type": f_type}
+                        if ac1.button("👁️ Voir", key=f"view_{m_id}"):
+                            st.session_state.view_content = {"name": m_name, "content": m_content, "type": m_type}
                             st.session_state.current_page = "👁️ Visualiseur"
                             st.rerun()
                     
                     # Tooltip for download
-                    if f.endswith('.csv'):
-                        html_code = generate_html_content(content, f.replace(".csv", ""), use_columns=True)
-                        ac2.download_button("📥 HTML", data=html_code, file_name=f.replace(".csv", ".html"), mime="text/html", key=f"dl_{f}_{i}")
+                    if m_type != "SUM":
+                        html_code = generate_html_content(m_content, m_name, use_columns=True)
+                        ac2.download_button("📥 HTML", data=html_code, file_name=f"{m_name}.html", mime="text/html", key=f"dl_{m_id}")
                     else:
-                        ac2.download_button("📥 File", data=content, file_name=f, mime="text/plain", key=f"dl_{f}_{i}")
-                    st.write("") 
+                        ac2.download_button("📥 Markdown", data=m_content, file_name=f"{m_name}.md", mime="text/plain", key=f"dl_{m_id}")
+                    st.write("")
 
 def page_visualizer():
     v = st.session_state.view_content
@@ -1180,60 +1182,84 @@ def page_visualizer():
     st.divider()
     
     if v["type"] == "SUM":
-        st.markdown(v["content"])
+        st.markdown(f"""
+        <div style="font-family: 'Inter', sans-serif; color: #334155; line-height: 1.7;">
+            {v["content"]}
+        </div>
+        """, unsafe_allow_html=True)
     elif v["type"] == "QA":
         # Simple parsing for Q&A
         lines = v["content"].split("\n")
         for line in lines:
             if line.strip().startswith("Q:"):
-                st.info(f"**{line.strip()}**")
+                st.markdown(f"#### ❓ {line.strip()[2:]}")
             elif line.strip().startswith("R:"):
-                st.write(line.strip().replace("R:", "*Rép :*"))
+                st.markdown(f"> **Réponse :** {line.strip()[2:]}")
+                st.divider()
+    elif v["type"] == "DEF":
+        # Definitions look
+        lines = v["content"].split("\n")
+        for line in lines:
+            if "|" in line:
+                concept, definition = line.split("|", 1)
+                st.markdown(f"### 📜 {concept.strip()}")
+                st.info(definition.strip())
     else:
         st.code(v["content"])
 
-def page_summaries():
-    st.header("📚 Bibliothèque de Résumés")
-    st.info("Retrouvez ici toutes vos synthèses et cours au format Markdown.")
+def page_admin_crud():
+    st.header("⚙️ Gestion Administrative (CRUD)")
+    st.info("Gérez ici tous les contenus stockés dans la base de données SQLite.")
 
-    MODULES_DIR = "modules"
-    if not os.path.exists(MODULES_DIR):
-        st.info("Aucun dossier de modules trouvé.")
-        return
-
-    categories = [d for d in os.listdir(MODULES_DIR) if os.path.isdir(os.path.join(MODULES_DIR, d))]
-    if not categories:
-        st.info("Aucune catégorie trouvée.")
-        return
-
-    tabs = st.tabs([f"📂 {cat}" for cat in categories])
+    search = st.text_input("🔍 Rechercher dans toute la base...", "")
     
-    for i, cat in enumerate(categories):
-        with tabs[i]:
-            cat_path = os.path.join(MODULES_DIR, cat)
-            # On cherche les fichiers .md ou contenant _SUM
-            files = [f for f in os.listdir(cat_path) if f.endswith('.md') or "_SUM" in f]
-            
-            if not files:
-                st.info("Aucun résumé dans cette catégorie.")
+    tabs = st.tabs(["⚡ QCM", "❓ Q&A", "📜 Définitions", "📝 Résumés"])
+    types_map = {"⚡ QCM": "QCM", "❓ Q&A": "QA", "📜 Définitions": "DEF", "📝 Résumés": "SUM"}
+
+    for t_name, t_code in types_map.items():
+        with tabs[list(types_map.keys()).index(t_name)]:
+            mods = db_get_modules(m_type=t_code, search=search)
+            if not mods:
+                st.warning(f"Aucun contenu de type {t_code} trouvé.")
                 continue
 
-            for f in files:
-                with st.expander(f"📖 {f.replace('_SUM', '').replace('.md', '')}"):
-                    full_path = os.path.join(cat_path, f)
-                    with open(full_path, "r", encoding="utf-8") as file_data:
-                        content = file_data.read()
-                    
-                    st.markdown(content)
-                    
-                    c1, c2 = st.columns(2)
-                    pdf_bytes = convert_html_to_pdf(f"<html><body>{content}</body></html>")
-                    if pdf_bytes:
-                        c1.download_button("📄 Télécharger PDF", pdf_bytes, f.replace(".md", ".pdf"), key=f"dl_pdf_{f}")
-                    if c2.button("👁️ Visualiseur", key=f"vis_{f}"):
-                        st.session_state.view_content = {"name": f, "content": content, "type": "SUM"}
-                        st.session_state.current_page = "👁️ Visualiseur"
+            # Display table
+            df = pd.DataFrame(mods, columns=["ID", "Nom", "Catégorie", "Type", "Contenu", "Date"])
+            st.dataframe(df[["Nom", "Catégorie", "Date"]], use_container_width=True)
+
+            for m in mods:
+                mid, mname, mcat, mtype, mcont, mdate = m
+                with st.expander(f"⚙️ Action : {mname} ({mcat})"):
+                    c1, c2, c3 = st.columns(3)
+                    if c1.button("✏️ ÉDITER", key=f"edit_{mid}"):
+                        st.session_state.csv_source_input = mcont
+                        st.session_state.editing_name = mname
+                        st.session_state.editing_type = "QCM Classique" if mtype == "QCM" else "Questions / Réponses" if mtype == "QA" else "Glossaire (Concept | Définition)" if mtype == "DEF" else "Synthèse (Markdown)"
+                        st.session_state.current_page = "✍️ Créateur"
                         st.rerun()
+                    if c2.button("🗑️ SUPPRIMER", key=f"del_{mid}", type="secondary"):
+                        db_delete_module(mid)
+                        st.success("Supprimé !")
+                        st.rerun()
+                    
+                    html_code = generate_html_content(mcont, mname, use_columns=True) if mtype != "SUM" else mcont
+                    c3.download_button("📥 EXPORT", data=html_code, file_name=f"{mname}.html", key=f"dl_admin_{mid}")
+
+def page_summaries():
+    # Ancienne page maintenue pour compatibilité ou simplifiée
+    st.header("📚 Bibliothèque de Résumés")
+    all_sums = db_get_modules(m_type="SUM")
+    if not all_sums:
+        st.info("Aucun résumé trouvé.")
+        return
+
+    for mid, name, cat, mtype, cont, date in all_sums:
+        with st.expander(f"📖 {name} ({cat})"):
+            st.markdown(cont)
+            if st.button("👁️ Ouvrir dans le Visualiseur", key=f"lib_{mid}"):
+                st.session_state.view_content = {"name": name, "content": cont, "type": "SUM"}
+                st.session_state.current_page = "👁️ Visualiseur"
+                st.rerun()
 
 # --- MAIN NAVIGATION ---
 if "current_page" not in st.session_state:
@@ -1241,7 +1267,7 @@ if "current_page" not in st.session_state:
 
 with st.sidebar:
     st.title("🚀 Navigation")
-    pages = ["📄 PDF Transformer", "✍️ Créateur", "🔍 Explorer", "📚 Résumés", "⚡ Quiz Interactif", "📊 Historique", "👁️ Visualiseur"]
+    pages = ["📄 PDF Transformer", "✍️ Créateur", "🔍 Explorer", "📚 Résumés", "⚡ Quiz Interactif", "📊 Historique", "⚙️ Gestion BD", "👁️ Visualiseur"]
     # Hide Visualizer from direct selectbox if not active
     nav_pages = [p for p in pages if p != "👁️ Visualiseur" or st.session_state.current_page == "👁️ Visualiseur"]
     
@@ -1258,4 +1284,5 @@ elif st.session_state.current_page == "🔍 Explorer": page_discover()
 elif st.session_state.current_page == "📚 Résumés": page_summaries()
 elif st.session_state.current_page == "⚡ Quiz Interactif": page_quiz()
 elif st.session_state.current_page == "📊 Historique": page_history()
+elif st.session_state.current_page == "⚙️ Gestion BD": page_admin_crud()
 elif st.session_state.current_page == "👁️ Visualiseur": page_visualizer()
