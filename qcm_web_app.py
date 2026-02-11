@@ -997,23 +997,45 @@ def load_persistence_js():
 # --- PAGE FUNCTIONS ---
 
 def page_pdf_transformer():
-    st.header("📄 PDF Transformer (Extraction & IA)")
-    st.info("Étape 1 : Téléchargez votre PDF. Étape 2 : Choisissez le type d'exercice. Étape 3 : Utilisez le prompt généré avec votre IA préférée.")
+    st.header("📄 Extracteur de Documents (PDF/Word + OCR)")
+    st.info("Étape 1 : Téléchargez votre document. Étape 2 : Choisissez le type d'exercice. Étape 3 : Utilisez le prompt généré avec votre IA préférée.")
 
-    uploaded_pdf = st.file_uploader("Glissez votre PDF ici", type="pdf")
-    if uploaded_pdf:
-        valid, msg = validate_file_upload(uploaded_pdf, max_size_mb=15)
+    # File type selector
+    file_type = st.radio("Type de document:", ["PDF", "Word (.docx)"], horizontal=True)
+    
+    if file_type == "PDF":
+        uploaded_file = st.file_uploader("Glissez votre PDF ici", type="pdf")
+        use_ocr = st.checkbox("🔍 Activer l'OCR (pour PDFs scannés)", value=False, 
+                             disabled=not OCR_AVAILABLE,
+                             help="OCR non disponible" if not OCR_AVAILABLE else "Active la reconnaissance optique de caractères pour documents scannés")
+    else:
+        uploaded_file = st.file_uploader("Glissez votre fichier Word ici", type="docx")
+        use_ocr = False
+    
+    if uploaded_file:
+        valid, msg = validate_file_upload(uploaded_file, 
+                                          allowed_types=["pdf" if file_type == "PDF" else "docx"], 
+                                          max_size_mb=15)
         if not valid:
             st.error(msg)
             return
 
         try:
-            pdf_text = extract_text_from_pdf(uploaded_pdf.read())
-            if "Erreur" in pdf_text:
+            # Extract text based on file type
+            if file_type == "PDF":
+                if use_ocr:
+                    with st.spinner("🔍 OCR en cours... Patience"):
+                        pdf_text = extract_text_from_pdf(uploaded_file.read(), use_ocr=True)
+                else:
+                    pdf_text = extract_text_from_pdf(uploaded_file.read())
+            else:  # DOCX
+                pdf_text = extract_text_from_docx(uploaded_file.read())
+            
+            if "Erreur" in pdf_text or "[" in pdf_text[:20]:
                 st.error(pdf_text)
                 return
             
-            st.success("✅ Texte extrait avec succès !")
+            st.success(f"✅ Texte extrait ! ({len(pdf_text)} caractères)")
             
             cleaned_text = " ".join(pdf_text.split())[:15000] # Limite pour les prompts
             
@@ -1025,37 +1047,37 @@ def page_pdf_transformer():
             logger.error(f"Erreur lors de l'extraction PDF : {e}")
             st.error("Impossible de lire ce PDF. Vérifiez qu'il n'est pas protégé ou corrompu.")
             return
+        
+        target_lang = st.selectbox("Langue cible :", ["Français", "Arabe", "Anglais"])
+        
+        if ex_type == "QCM (Interactif)":
+            prompt = f"""Agis comme un expert pédagogique. À partir du texte suivant, génère un QCM au format CSV strict avec le délimiteur '|'.
+            Colonnes : Question|A|B|C|D|E|F|Réponse|Explication
+            Langue : {target_lang}.
+            Suffixe de fichier recommandé : _QCM.csv
             
-            target_lang = st.selectbox("Langue cible :", ["Français", "Arabe", "Anglais"])
+            Texte : {cleaned_text}"""
+            suffix = "_QCM.csv"
+        elif ex_type == "Q&A (Flashcards)":
+            prompt = f"""Génère une liste de Questions/Réponses pédagogiques à partir du texte.
+            Format CSV strict (délimiteur |) : Question|Réponse
+            Langue : {target_lang}.
+            Suffixe de fichier recommandé : _QA.csv
             
-            if ex_type == "QCM (Interactif)":
-                prompt = f"""Agis comme un expert pédagogique. À partir du texte suivant, génère un QCM au format CSV strict avec le délimiteur '|'.
-                Colonnes : Question|A|B|C|D|E|F|Réponse|Explication
-                Langue : {target_lang}.
-                Suffixe de fichier recommandé : _QCM.csv
-                
-                Texte : {cleaned_text}"""
-                suffix = "_QCM.csv"
-            elif ex_type == "Q&A (Flashcards)":
-                prompt = f"""Génère une liste de Questions/Réponses pédagogiques à partir du texte.
-                Format CSV strict (délimiteur |) : Question|Réponse
-                Langue : {target_lang}.
-                Suffixe de fichier recommandé : _QA.csv
-                
-                Texte : {cleaned_text}"""
-                suffix = "_QA.csv"
-            else:
-                prompt = f"""Génère une synthèse pédagogique structurée.
-                Inclus : 1. Points clés, 2. Définitions importantes, 3. Résumé global.
-                Format : Markdown.
-                Langue : {target_lang}.
-                Suffixe de fichier recommandé : _SUM.md
-                
-                Texte : {cleaned_text}"""
-                suffix = "_SUM.md"
+            Texte : {cleaned_text}"""
+            suffix = "_QA.csv"
+        else:
+            prompt = f"""Génère une synthèse pédagogique structurée.
+            Inclus : 1. Points clés, 2. Définitions importantes, 3. Résumé global.
+            Format : Markdown.
+            Langue : {target_lang}.
+            Suffixe de fichier recommandé : _SUM.md
+            
+            Texte : {cleaned_text}"""
+            suffix = "_SUM.md"
 
-            st.text_area(f"📋 Prompt IA pour {ex_type}", prompt, height=250)
-            st.info(f"💡 **Conseil** : Une fois le contenu généré par l'IA, utilisez l'onglet **'Créateur'** pour l'enregistrer avec le nom se terminant par `{suffix}`.")
+        st.text_area(f"📋 Prompt IA pour {ex_type}", prompt, height=250)
+        st.info(f"💡 **Conseil** : Une fois le contenu généré par l'IA, utilisez l'onglet **'Créateur'** pour l'enregistrer avec le nom se terminant par `{suffix}`.")
 
 def page_creator():
     st.header("✍️ Créateur de Contenu (HTML/PDF)")
@@ -1541,6 +1563,35 @@ def page_history():
                     mime="application/json",
                     help="Export complet conforme RGPD"
                 )
+        
+        # Recommendations section
+        st.divider()
+        st.subheader("💡 Modules recommandés pour vous")
+        recommendations = get_user_recommendations(st.session_state.identity['email'], limit=3)
+        
+        if recommendations:
+            for module_name, reason, category in recommendations:
+                with st.container():
+                    col_icon, col_info, col_action = st.columns([1, 5, 2])
+                    with col_icon:
+                        st.markdown("### 📚")
+                    with col_info:
+                        st.markdown(f"**{module_name}**")
+                        st.caption(f"📂 {category} • {reason}")
+                    with col_action:
+                        if st.button("🚀 Lancer", key=f"rec_{module_name}"):
+                            # Load this module
+                            modules = db_get_modules()
+                            target_mod = [m for m in modules if m[1] == module_name]
+                            if target_mod:
+                                m = target_mod[0]
+                                st.session_state.auto_load_csv = m[4]  # content
+                                st.session_state.quiz_mod = m[1]  # name
+                                st.session_state.current_page = "⚡ Quiz Interactif"
+                                st.rerun()
+                    st.markdown("---")
+        else:
+            st.info("Aucune recommandation pour le moment.")
 
 def page_discover():
     st.markdown("""
