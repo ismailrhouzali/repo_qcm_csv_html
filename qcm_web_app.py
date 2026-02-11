@@ -10,10 +10,24 @@ import pdfkit
 import random
 import datetime
 from datetime import timedelta
+import logging
+import re
+from contextlib import contextmanager
 
 # --- ADVANCED LIBS ---
 import PyPDF2
 import sqlite3
+
+# --- LOGGING CONFIGURATION ---
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('qcm_app.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 def extract_text_from_pdf(file_bytes):
     """Extraie le texte d'un fichier PDF uploader."""
@@ -110,52 +124,117 @@ if 'view_content' not in st.session_state:
 # --- DATABASE LOGIC ---
 DB_NAME = "qcm_master.db"
 
+@contextmanager
+def db_context():
+    """Context manager pour gérer automatiquement les connexions DB."""
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        logger.debug(f"Database connection opened: {DB_NAME}")
+        yield conn
+    except sqlite3.Error as e:
+        logger.error(f"Database error: {e}")
+        if conn:
+            conn.rollback()
+        raise
+    finally:
+        if conn:
+            conn.close()
+            logger.debug("Database connection closed")
+
+def validate_input(text, max_length=10000, allow_html=False):
+    """Valide et nettoie les entrées utilisateur."""
+    if not text or not isinstance(text, str):
+        return ""
+    
+    # Limite de longueur
+    text = text[:max_length]
+    
+    # Supprime les caractères dangereux si HTML non autorisé
+    if not allow_html:
+        text = re.sub(r'<[^>]+>', '', text)
+    
+    # Échappe les caractères spéciaux SQL (en plus des requêtes préparées)
+    dangerous_chars = ['--', ';--', '/*', '*/', 'xp_', 'sp_']
+    for char in dangerous_chars:
+        if char in text.lower():
+            logger.warning(f"Suspicious input detected: {char}")
+            text = text.replace(char, '')
+    
+    return text.strip()
+
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    # Table Utilisateurs
-    c.execute('''CREATE TABLE IF NOT EXISTS users 
-                 (email TEXT PRIMARY KEY, nom TEXT, prenom TEXT, user_id TEXT)''')
-    # Table Historique des scores
-    c.execute('''CREATE TABLE IF NOT EXISTS history 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                  email TEXT, course TEXT, score INTEGER, total INTEGER, date TEXT)''')
-    # Table Progression Quiz (En cours)
-    c.execute('''CREATE TABLE IF NOT EXISTS quiz_progress 
-                 (email TEXT, module_name TEXT, current_idx INTEGER, 
-                  answers_json TEXT, last_updated TEXT,
-                  PRIMARY KEY (email, module_name))''')
-    # Table Centralisée des Modules Pédagogiques
-    c.execute('''CREATE TABLE IF NOT EXISTS educational_modules 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                  name TEXT, category TEXT, type TEXT, content TEXT, 
-                  created_at TEXT)''')
-    conn.commit()
-    conn.close()
+    """Initialise la base de données avec toutes les tables et index."""
+    logger.info("Initializing database...")
+    with db_context() as conn:
+        c = conn.cursor()
+        
+        # Table Utilisateurs
+        c.execute('''CREATE TABLE IF NOT EXISTS users 
+                     (email TEXT PRIMARY KEY, nom TEXT, prenom TEXT, user_id TEXT)''')
+        
+        # Table Historique des scores
+        c.execute('''CREATE TABLE IF NOT EXISTS history 
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                      email TEXT, course TEXT, score INTEGER, total INTEGER, date TEXT)''')
+        c.execute('''CREATE INDEX IF NOT EXISTS idx_history_email ON history(email)''')
+        c.execute('''CREATE INDEX IF NOT EXISTS idx_history_course ON history(course)''')
+        
+        # Table Progression Quiz (En cours)
+        c.execute('''CREATE TABLE IF NOT EXISTS quiz_progress 
+                     (email TEXT, module_name TEXT, current_idx INTEGER, 
+                      answers_json TEXT, last_updated TEXT,
+                      PRIMARY KEY (email, module_name))''')
+        
+        # Table Centralisée des Modules Pédagogiques
+        c.execute('''CREATE TABLE IF NOT EXISTS educational_modules 
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                      name TEXT, category TEXT, type TEXT, content TEXT, 
+                      created_at TEXT)''')
+        c.execute('''CREATE INDEX IF NOT EXISTS idx_modules_type ON educational_modules(type)''')
+        c.execute('''CREATE INDEX IF NOT EXISTS idx_modules_category ON educational_modules(category)''')
+        c.execute('''CREATE INDEX IF NOT EXISTS idx_modules_name ON educational_modules(name)''')
+        
+        conn.commit()
+    logger.info("Database initialized successfully")
 
 def db_save_user(email, nom, prenom, user_id):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("INSERT OR REPLACE INTO users (email, nom, prenom, user_id) VALUES (?, ?, ?, ?)", 
-              (email, nom, prenom, user_id))
-    conn.commit()
-    conn.close()
+    """Sauvegarde un utilisateur dans la base de données."""
+    email = validate_input(email, max_length=255)
+    nom = validate_input(nom, max_length=100)
+    prenom = validate_input(prenom, max_length=100)
+    user_id = validate_input(user_id, max_length=50)
+    
+    logger.info(f"Saving user: {email}")
+    with db_context() as conn:
+        c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO users (email, nom, prenom, user_id) VALUES (?, ?, ?, ?)", 
+                  (email, nom, prenom, user_id))
+        conn.commit()
 
 def db_save_score(email, course, score, total):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-    c.execute("INSERT INTO history (email, course, score, total, date) VALUES (?, ?, ?, ?, ?)", 
-              (email, course, score, total, date_str))
-    conn.commit()
-    conn.close()
+    """Sauvegarde un score de quiz."""
+    email = validate_input(email, max_length=255)
+    course = validate_input(course, max_length=255)
+    
+    logger.info(f"Saving score for {email}: {score}/{total} on {course}")
+    with db_context() as conn:
+        c = conn.cursor()
+        date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        c.execute("INSERT INTO history (email, course, score, total, date) VALUES (?, ?, ?, ?, ?)", 
+                  (email, course, score, total, date_str))
+        conn.commit()
 
 def db_get_best_score(email, course):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("SELECT MAX(score), total FROM history WHERE email = ? AND course = ?", (email, course))
-    res = c.fetchone()
-    conn.close()
+    """Récupère le meilleur score pour un cours donné."""
+    email = validate_input(email, max_length=255)
+    course = validate_input(course, max_length=255)
+    
+    with db_context() as conn:
+        c = conn.cursor()
+        c.execute("SELECT MAX(score), total FROM history WHERE email = ? AND course = ?", (email, course))
+        res = c.fetchone()
+    
     if res and res[0] is not None:
         return f"{res[0]} / {res[1]}"
     return "N/A"
@@ -163,75 +242,113 @@ def db_get_best_score(email, course):
 import json
 
 def db_save_progress(email, module_name, current_idx, answers):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    ans_json = json.dumps(answers)
-    date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-    c.execute("INSERT OR REPLACE INTO quiz_progress (email, module_name, current_idx, answers_json, last_updated) VALUES (?, ?, ?, ?, ?)",
-              (email, module_name, current_idx, ans_json, date_str))
-    conn.commit()
-    conn.close()
+    """Sauvegarde la progression dans un quiz."""
+    email = validate_input(email, max_length=255)
+    module_name = validate_input(module_name, max_length=255)
+    
+    logger.info(f"Saving progress for {email} on {module_name} at index {current_idx}")
+    with db_context() as conn:
+        c = conn.cursor()
+        ans_json = json.dumps(answers)
+        date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        c.execute("INSERT OR REPLACE INTO quiz_progress (email, module_name, current_idx, answers_json, last_updated) VALUES (?, ?, ?, ?, ?)",
+                  (email, module_name, current_idx, ans_json, date_str))
+        conn.commit()
 
 def db_load_progress(email, module_name):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("SELECT current_idx, answers_json FROM quiz_progress WHERE email = ? AND module_name = ?", (email, module_name))
-    res = c.fetchone()
-    conn.close()
+    """Charge la progression d'un quiz."""
+    email = validate_input(email, max_length=255)
+    module_name = validate_input(module_name, max_length=255)
+    
+    with db_context() as conn:
+        c = conn.cursor()
+        c.execute("SELECT current_idx, answers_json FROM quiz_progress WHERE email = ? AND module_name = ?", (email, module_name))
+        res = c.fetchone()
+    
     if res:
         return {"idx": res[0], "answers": json.loads(res[1])}
     return None
 
 def db_clear_progress(email, module_name):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("DELETE FROM quiz_progress WHERE email = ? AND module_name = ?", (email, module_name))
-    conn.commit()
-    conn.close()
+    """Supprime la progression d'un quiz."""
+    email = validate_input(email, max_length=255)
+    module_name = validate_input(module_name, max_length=255)
+    
+    logger.info(f"Clearing progress for {email} on {module_name}")
+    with db_context() as conn:
+        c = conn.cursor()
+        c.execute("DELETE FROM quiz_progress WHERE email = ? AND module_name = ?", (email, module_name))
+        conn.commit()
 
 def db_save_module(name, category, m_type, content):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-    # On vérifie si c'est un update (même nom et même catégorie)
-    c.execute("SELECT id FROM educational_modules WHERE name = ? AND category = ?", (name, category))
-    res = c.fetchone()
-    if res:
-        c.execute("UPDATE educational_modules SET content = ?, type = ?, created_at = ? WHERE id = ?", 
-                  (content, m_type, date_str, res[0]))
-    else:
-        c.execute("INSERT INTO educational_modules (name, category, type, content, created_at) VALUES (?, ?, ?, ?, ?)",
-                  (name, category, m_type, content, date_str))
-    conn.commit()
-    conn.close()
+    """Sauvegarde ou met à jour un module éducatif."""
+    name = validate_input(name, max_length=255)
+    category = validate_input(category, max_length=100)
+    m_type = validate_input(m_type, max_length=10)
+    content = validate_input(content, max_length=500000, allow_html=True)  # Large limit for content
+    
+    logger.info(f"Saving module: {name} ({m_type}) in category {category}")
+    with db_context() as conn:
+        c = conn.cursor()
+        date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        # Vérifie si c'est un update (même nom et même catégorie)
+        c.execute("SELECT id FROM educational_modules WHERE name = ? AND category = ?", (name, category))
+        res = c.fetchone()
+        if res:
+            c.execute("UPDATE educational_modules SET content = ?, type = ?, created_at = ? WHERE id = ?", 
+                      (content, m_type, date_str, res[0]))
+        else:
+            c.execute("INSERT INTO educational_modules (name, category, type, content, created_at) VALUES (?, ?, ?, ?, ?)",
+                      (name, category, m_type, content, date_str))
+        conn.commit()
 
-def db_get_modules(m_type=None, search=""):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    query = "SELECT id, name, category, type, content, created_at FROM educational_modules WHERE 1=1"
-    params = []
-    if m_type:
-        query += " AND type = ?"
-        params.append(m_type)
-    if search:
-        query += " AND (name LIKE ? OR category LIKE ?)"
-        params.extend([f"%{search}%", f"%{search}%"])
-    c.execute(query, params)
-    rows = c.fetchall()
-    conn.close()
+def db_get_modules(m_type=None, search="", limit=None, offset=0):
+    """Récupère les modules avec options de pagination."""
+    search = validate_input(search, max_length=100)
+    
+    with db_context() as conn:
+        c = conn.cursor()
+        query = "SELECT id, name, category, type, content, created_at FROM educational_modules WHERE 1=1"
+        params = []
+        
+        if m_type:
+            m_type = validate_input(m_type, max_length=10)
+            query += " AND type = ?"
+            params.append(m_type)
+        
+        if search:
+            query += " AND (name LIKE ? OR category LIKE ?)"
+            params.extend([f"%{search}%", f"%{search}%"])
+        
+        query += " ORDER BY created_at DESC"
+        
+        if limit:
+            query += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+        
+        c.execute(query, params)
+        rows = c.fetchall()
+    
     return rows
 
 def db_delete_module(m_id):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("DELETE FROM educational_modules WHERE id = ?", (m_id,))
-    conn.commit()
-    conn.close()
+    """Supprime un module par son ID."""
+    logger.info(f"Deleting module ID: {m_id}")
+    with db_context() as conn:
+        c = conn.cursor()
+        c.execute("DELETE FROM educational_modules WHERE id = ?", (m_id,))
+        conn.commit()
 
 def db_get_history(email):
-    conn = sqlite3.connect(DB_NAME)
-    df = pd.read_sql_query("SELECT date as Date, course as Examen, CAST(score AS TEXT) || ' / ' || CAST(total AS TEXT) as Score FROM history WHERE email = ? ORDER BY id DESC", conn, params=(email,))
-    conn.close()
+    """Récupère l'historique des scores pour un utilisateur."""
+    email = validate_input(email, max_length=255)
+    
+    with db_context() as conn:
+        df = pd.read_sql_query(
+            "SELECT date as Date, course as Examen, CAST(score AS TEXT) || ' / ' || CAST(total AS TEXT) as Score FROM history WHERE email = ? ORDER BY id DESC", 
+            conn, 
+            params=(email,)
+        )
     return df
 
 # Initialize DB on load
