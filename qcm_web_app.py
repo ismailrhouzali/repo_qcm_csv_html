@@ -20,6 +20,23 @@ import json as json_lib
 import PyPDF2
 import sqlite3
 
+# --- OCR & DOCUMENT PARSING (optional imports) ---
+try:
+    import pytesseract
+    from PIL import Image
+    import pdf2image
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_AVAILABLE = False
+    logger.warning("OCR non disponible. Installez: pip install pytesseract Pillow pdf2image")
+
+try:
+    from docx import Document
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
+    logger.warning("Support DOCX non disponible. Installez: pip install python-docx")
+
 # --- LOGGING CONFIGURATION ---
 logging.basicConfig(
     level=logging.INFO,
@@ -31,16 +48,55 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def extract_text_from_pdf(file_bytes):
-    """Extraie le texte d'un fichier PDF uploader."""
+def extract_text_from_pdf(file_bytes, use_ocr=False):
+    """Extraie le texte d'un fichier PDF (avec option OCR pour PDFs scannés)."""
     try:
         reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
         text = ""
         for page in reader.pages:
-            text += page.extract_text() + "\n"
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + "\n"
+        
+        # Si le texte est vide ou trop court, essayer l'OCR
+        if use_ocr and OCR_AVAILABLE and len(text.strip()) < 50:
+            logger.info("Texte extrait trop court, tentative OCR...")
+            return extract_text_with_ocr(file_bytes)
+        
+        return text.strip() if text.strip() else "[PDF vide ou scanné - Activez l'OCR]"
+    except Exception as e:
+        logger.error(f"Erreur extraction PDF: {e}")
+        return f"Erreur d'extraction : {e}"
+
+def extract_text_with_ocr(file_bytes):
+    """Applique l'OCR sur un PDF scanné."""
+    if not OCR_AVAILABLE:
+        return "[OCR non disponible - Installez pytesseract et pdf2image]"
+    
+    try:
+        # Convertir PDF en images
+        images = pdf2image.convert_from_bytes(file_bytes)
+        text = ""
+        for i, img in enumerate(images):
+            logger.info(f"OCR page {i+1}/{len(images)}...")
+            text += pytesseract.image_to_string(img, lang='fra') + "\n"
         return text.strip()
     except Exception as e:
-        return f"Erreur d'extraction : {e}"
+        logger.error(f"Erreur OCR: {e}")
+        return f"Erreur OCR : {e}"
+
+def extract_text_from_docx(file_bytes):
+    """Extraie le texte d'un fichier Word (.docx)."""
+    if not DOCX_AVAILABLE:
+        return "[Support DOCX non disponible - Installez python-docx]"
+    
+    try:
+        doc = Document(io.BytesIO(file_bytes))
+        text = "\n".join([para.text for para in doc.paragraphs if para.text.strip()])
+        return text.strip()
+    except Exception as e:
+        logger.error(f"Erreur extraction DOCX: {e}")
+        return f"Erreur d'extraction DOCX : {e}"
 
 def validate_file_upload(uploaded_file, allowed_types=["pdf"], max_size_mb=10):
     """Vérifie le type et la taille d'un fichier uploadé."""
@@ -426,6 +482,38 @@ def create_bulk_export_zip():
     
     zip_buffer.seek(0)
     return zip_buffer.getvalue()
+
+def get_user_recommendations(email, limit=3):
+    """Recommande des modules basés sur les performances de l'utilisateur."""
+    email = validate_input(email, max_length=255)
+    
+    with db_context() as conn:
+        # Récupère l'historique de l'utilisateur
+        df = pd.read_sql_query(
+            "SELECT course, AVG(CAST(score AS FLOAT) / CAST(total AS FLOAT)) as avg_score FROM history WHERE email = ? GROUP BY course",
+            conn,
+            params=(email,)
+        )
+    
+    if df.empty:
+        # Pas d'historique, recommander des modules populaires
+        all_modules = db_get_modules(m_type="QCM", limit=limit)
+        return [(m[1], "Nouveau module suggéré", m[2]) for m in all_modules]
+    
+    # Trouver les modules avec score < 70%
+    weak_modules = df[df['avg_score'] < 0.7]['course'].tolist()
+    
+    if weak_modules:
+        recommendations = [(m, f"Score moyen: {int(df[df['course']==m]['avg_score'].iloc[0]*100)}%", "À améliorer") 
+                          for m in weak_modules[:limit]]
+        return recommendations
+    
+    # Sinon, recommander de nouveaux modules
+    completed = df['course'].tolist()
+    all_qcms = db_get_modules(m_type="QCM")
+    new_modules = [m for m in all_qcms if m[1] not in completed][:limit]
+    
+    return [(m[1], "Non encore essayé", m[2]) for m in new_modules]
 
 # Initialize DB on load
 init_db()

@@ -2,3 +2,6 @@ streamlit
 pandas
 pdfkit
 PyPDF2
+pytesseract
+Pillow
+python-docx
