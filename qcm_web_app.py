@@ -102,39 +102,35 @@ def convert_html_to_pdf(source_html):
         return None
 
 def generate_answer_sheet(num_questions):
-    """Génère une feuille de cochage propre (Matrice)"""
-    rows = ""
-    for i in range(1, num_questions + 1):
-        rows += f"""
-        <tr>
-            <td style="font-weight:bold; width:30px;">{i}</td>
-            <td style="width:30px; border:1px solid #000;"></td>
-            <td style="width:30px; border:1px solid #000;"></td>
-            <td style="width:30px; border:1px solid #000;"></td>
-            <td style="width:30px; border:1px solid #000;"></td>
-            <td style="width:30px; border:1px solid #000;"></td>
-            <td style="width:30px; border:1px solid #000;"></td>
-        </tr>"""
-    
+    """Génère une feuille de cochage propre sur 3 colonnes"""
+    def make_table(q_range):
+        rows = ""
+        for i in q_range:
+            rows += f"""<tr><td style='font-weight:bold; width:30px;'>{i}</td>""" + "".join([f"<td style='width:30px; border:1px solid #000;'></td>" for _ in range(6)]) + "</tr>"
+        return f"""
+        <table style="width:100%; border-collapse: collapse; text-align:center; font-size:9pt; margin-bottom:20px;">
+            <thead><tr><th>N°</th><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th><th>F</th></tr></thead>
+            <tbody>{rows}</tbody>
+        </table>"""
+
+    # Split into 3 chunks
+    q_per_col = (num_questions + 2) // 3
+    c1 = range(1, min(num_questions + 1, q_per_col + 1))
+    c2 = range(q_per_col + 1, min(num_questions + 1, 2 * q_per_col + 1))
+    c3 = range(2 * q_per_col + 1, num_questions + 1)
+
     return f"""
     <div style="page-break-before: always; margin-top:30px;">
         <h2 style="text-align:center;">FEUILLE DE RÉPONSES (À COCHER)</h2>
-        <table style="width:auto; margin: 0 auto; border-collapse: collapse; text-align:center;">
-            <thead>
-                <tr>
-                    <th>N°</th>
-                    <th style="width:30px;">A</th><th style="width:30px;">B</th>
-                    <th style="width:30px;">C</th><th style="width:30px;">D</th>
-                    <th style="width:30px;">E</th><th style="width:30px;">F</th>
-                </tr>
-            </thead>
-            <tbody>{rows}</tbody>
-        </table>
+        <div style="display:flex; justify-content: space-between; gap: 20px;">
+            <div style="flex:1;">{make_table(c1)}</div>
+            <div style="flex:1;">{make_table(c2) if c2 else ""}</div>
+            <div style="flex:1;">{make_table(c3) if c3 else ""}</div>
+        </div>
         <p style="font-size:8pt; text-align:center; margin-top:10px;">Cochez la case correspondante à votre réponse.</p>
-    </div>
-    """
+    </div>"""
 
-def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Examen", shuffle_q=False, shuffle_o=False, q_type="QCM Classique"):
+def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Examen", shuffle_q=False, shuffle_o=False, q_type="QCM Classique", add_sheet=True):
     col_css = "column-count: 3; -webkit-column-count: 3; -moz-column-count: 3; column-gap: 30px;" if use_columns else ""
     # Only show QR for QCM mode as it links to a correction sheet
     qr_code_html = ""
@@ -258,7 +254,7 @@ def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Exame
 
     # Only show correction footer for QCM mode
     if mode == "Examen" and q_type == "QCM Classique":
-        sheet_html = generate_answer_sheet(len(raw_questions))
+        sheet_html = generate_answer_sheet(len(raw_questions)) if add_sheet else ""
         footer = f"""
         </div>
         {sheet_html}
@@ -423,6 +419,7 @@ with st.sidebar:
         with c2: shuffle_o = st.checkbox("Mélanger Options", value=False)
         use_3_col = st.checkbox("3 Colonnes (Original)", value=True)
         add_qr = st.checkbox("Ajouter QR Code Correction", value=True)
+        add_sheet = st.checkbox("Inclure Feuille de Réponses", value=True)
     else:
         time_limit = st.number_input("Limite de temps (min)", 1, 120, 20)
         
@@ -523,7 +520,7 @@ if mode == "📄 Créateur QCM (Original)":
         except Exception as e:
             st.warning(f"Calcul des stats impossible : {e}")
 
-        html_out = generate_html_content(csv_in, doc_title, use_3_col, add_qr, mode=html_mode, shuffle_q=shuffle_q, shuffle_o=shuffle_o, q_type=q_type)
+        html_out = generate_html_content(csv_in, doc_title, use_3_col, add_qr, mode=html_mode, shuffle_q=shuffle_q, shuffle_o=shuffle_o, q_type=q_type, add_sheet=add_sheet)
         
         c1, c2 = st.columns(2)
         with c1:
