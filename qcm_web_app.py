@@ -13,6 +13,8 @@ from datetime import timedelta
 import logging
 import re
 from contextlib import contextmanager
+import zipfile
+import json as json_lib
 
 # --- ADVANCED LIBS ---
 import PyPDF2
@@ -382,6 +384,48 @@ def db_get_history(email):
             params=(email,)
         )
     return df
+
+def db_export_all_user_data(email):
+    """Exporte toutes les données utilisateur (RGPD compliant)."""
+    email = validate_input(email, max_length=255)
+    data = {}
+    
+    with db_context() as conn:
+        # User info
+        user_df = pd.read_sql_query("SELECT * FROM users WHERE email = ?", conn, params=(email,))
+        data['user_info'] = user_df.to_dict('records')
+        
+        # History
+        history_df = pd.read_sql_query("SELECT * FROM history WHERE email = ?", conn, params=(email,))
+        data['quiz_history'] = history_df.to_dict('records')
+        
+        # Progress
+        progress_df = pd.read_sql_query("SELECT * FROM quiz_progress WHERE email = ?", conn, params=(email,))
+        data['quiz_progress'] = progress_df.to_dict('records')
+    
+    return data
+
+def create_bulk_export_zip():
+    """Crée un ZIP avec tous les modules de la BD."""
+    modules = db_get_modules()
+    if not modules:
+        return None
+    
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        for m_id, m_name, m_cat, m_type, m_content, m_date in modules:
+            # Safe filename
+            safe_name = re.sub(r'[^\w\s-]', '', m_name).strip().replace(' ', '_')
+            filename = f"{m_cat}/{safe_name}_{m_type}.txt"
+            zip_file.writestr(filename, m_content)
+            
+            # Also add HTML export
+            html_content = generate_export_html(m_content, m_name, m_type)
+            html_filename = f"{m_cat}/{safe_name}_{m_type}.html"
+            zip_file.writestr(html_filename, html_content)
+    
+    zip_buffer.seek(0)
+    return zip_buffer.getvalue()
 
 # Initialize DB on load
 init_db()
@@ -1374,6 +1418,41 @@ def page_history():
             st.info("Aucun historique pour le moment.")
         else:
             st.table(df_db)
+            
+            # Export options
+            st.divider()
+            st.subheader("📥 Exporter mes données")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                csv_data = df_db.to_csv(index=False)
+                st.download_button(
+                    "📊 CSV",
+                    data=csv_data,
+                    file_name=f"historique_{st.session_state.identity['email']}.csv",
+                    mime="text/csv"
+                )
+            
+            with col2:
+                json_data = df_db.to_json(orient='records', indent=2)
+                st.download_button(
+                    "📋 JSON",
+                    data=json_data,
+                    file_name=f"historique_{st.session_state.identity['email']}.json",
+                    mime="application/json"
+                )
+            
+            with col3:
+                # Full user data export (RGPD)
+                user_data = db_export_all_user_data(st.session_state.identity['email'])
+                full_json = json_lib.dumps(user_data, indent=2, ensure_ascii=False)
+                st.download_button(
+                    "🗂️ Toutes mes données",
+                    data=full_json,
+                    file_name=f"donnees_completes_{st.session_state.identity['email']}.json",
+                    mime="application/json",
+                    help="Export complet conforme RGPD"
+                )
 
 def page_discover():
     st.markdown("""
@@ -1543,8 +1622,26 @@ def page_visualizer():
 def page_admin_crud():
     st.header("⚙️ Gestion Administrative (CRUD)")
     st.info("Gérez ici tous les contenus stockés dans la base de données SQLite.")
-
-    search = st.text_input("🔍 Rechercher dans toute la base...", "")
+    
+    # Bulk export option
+    col_search, col_export = st.columns([3, 1])
+    with col_search:
+        search = st.text_input("🔍 Rechercher dans toute la base...", "")
+    with col_export:
+        st.write("")  # Spacing
+        if st.button("📦 Export ZIP complet", use_container_width=True):
+            with st.spinner("Création du ZIP..."):
+                zip_data = create_bulk_export_zip()
+                if zip_data:
+                    st.download_button(
+                        "⬇️ Télécharger tous les modules",
+                        data=zip_data,
+                        file_name=f"modules_export_{datetime.datetime.now().strftime('%Y%m%d')}.zip",
+                        mime="application/zip",
+                        use_container_width=True
+                    )
+                else:
+                    st.warning("Aucun module à exporter.")
     
     tabs = st.tabs(["⚡ QCM", "❓ Q&A", "📜 Définitions", "📝 Résumés"])
     types_map = {"⚡ QCM": "QCM", "❓ Q&A": "QA", "📜 Définitions": "DEF", "📝 Résumés": "SUM"}
