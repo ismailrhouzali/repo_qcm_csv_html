@@ -79,7 +79,7 @@ def generate_answer_sheet(num_questions):
     </div>
     """
 
-def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Examen", shuffle_q=False, shuffle_o=False):
+def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Examen", shuffle_q=False, shuffle_o=False, q_type="QCM Classique"):
     col_css = "column-count: 3; -webkit-column-count: 3; -moz-column-count: 3; column-gap: 30px;" if use_columns else ""
     qr_code_html = f'<div style="text-align:right;"><img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=https://qcmwebapppy-bfxlibcaaelehxbv6qjyif.streamlit.app/#correction" alt="QR Correction" style="width:80px;"/> <br/><small>Scan pour correction</small></div>' if add_qr else ""
     
@@ -100,6 +100,10 @@ def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Exame
     table {{ width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 9pt; }}
     th, td {{ border: 1px solid #000; padding: 5px; text-align: left; }}
     th {{ background-color: #eee; }}
+    details {{ cursor: pointer; margin-top: 5px; font-size: 9pt; }}
+    details summary {{ list-style: none; font-weight: bold; color: #3498db; }}
+    details summary::-webkit-details-marker {{ display: none; }}
+    .qa-answer {{ padding: 10px; background: #f9f9f9; border-left: 3px solid #3498db; margin-top: 5px; }}
     @media print {{ .no-print {{ display: none; }} }}
 </style>
 </head>
@@ -114,98 +118,89 @@ def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Exame
     reader = csv.reader(f, delimiter='|')
     next(reader, None) # Skip header
     
-    # 1. Parse all questions
     raw_questions = []
-    for row in reader:
-        if len(row) < 7: continue
-        q_text = row[0].strip()
-        if len(row) >= 9:
-            opts = [row[i].strip() for i in range(1, 7)]
-            ans = row[7].strip()
-            expl = row[8].strip()
-        else:
-            opts = [row[i].strip() for i in range(1, 5)]
-            ans = row[5].strip()
-            expl = row[6].strip()
-        
-        lets = ['A', 'B', 'C', 'D', 'E', 'F'][:len(opts)]
-        correct_indices = [lets.index(l) for l in ans if l in lets]
-        
-        raw_questions.append({
-            'text': q_text,
-            'opts_data': [{'text': o, 'is_correct': (i in correct_indices)} for i, o in enumerate(opts) if o],
-            'expl': expl
-        })
+    
+    if q_type == "Questions / Réponses":
+        for row in reader:
+            if len(row) < 2: continue
+            raw_questions.append({
+                'text': row[0].strip(),
+                'ans': row[1].strip(),
+                'type': 'QA'
+            })
+    else:
+        for row in reader:
+            if len(row) < 7: continue
+            q_text = row[0].strip()
+            if len(row) >= 9:
+                opts = [row[i].strip() for i in range(1, 7)]
+                ans = row[7].strip()
+                expl = row[8].strip()
+            else:
+                opts = [row[i].strip() for i in range(1, 5)]
+                ans = row[5].strip()
+                expl = row[6].strip()
+            
+            lets = ['A', 'B', 'C', 'D', 'E', 'F'][:len(opts)]
+            correct_indices = [lets.index(l) for l in ans if l in lets]
+            
+            raw_questions.append({
+                'text': q_text,
+                'opts_data': [{'text': o, 'is_correct': (i in correct_indices)} for i, o in enumerate(opts) if o],
+                'expl': expl,
+                'type': 'QCM'
+            })
 
-    # 2. Shuffle Questions
     if shuffle_q:
         random.shuffle(raw_questions)
 
     questions_html = ""
     answers_rows = ""
     
-    # 3. Generate content with balanced shuffling
-    pos_counts = {i: 0 for i in range(6)}
     for q_idx, q in enumerate(raw_questions):
         q_num = q_idx + 1
-        opts_list = q['opts_data']
-        num_opts = len(opts_list)
         
-        if shuffle_o:
-            correct_opts = [o for o in opts_list if o['is_correct']]
-            distractors = [o for o in opts_list if not o['is_correct']]
-            k = len(correct_opts)
-            
-            # Identify positions 0..num_opts-1 sorted by how often they've been correct
-            # Add random secondary key to break ties randomly
-            target_pos = sorted(range(num_opts), key=lambda i: (pos_counts[i], random.random()))
-            correct_pos = target_pos[:k]
-            
-            new_opts = [None] * num_opts
-            # Place corrects
-            random.shuffle(correct_opts)
-            for i, p in enumerate(correct_pos):
-                new_opts[p] = correct_opts[i]
-                pos_counts[p] += 1
-            # Place distractors
-            random.shuffle(distractors)
-            d_ptr = 0
-            for i in range(num_opts):
-                if new_opts[i] is None:
-                    new_opts[i] = distractors[d_ptr]
-                    d_ptr += 1
-            opts_list = new_opts
+        if q.get('type') == 'QA':
+            questions_html += f"""
+            <div class="question-block">
+                <div class="question-text">{q_num}. {q['text']}</div>
+                <details>
+                    <summary>▶ Réponse</summary>
+                    <div class="qa-answer">{q['ans']}</div>
+                </details>
+            </div>"""
+            answers_rows += f"<tr><td>{q_num}</td><td colspan='2' style='font-weight:bold;'>{q['ans']}</td></tr>"
         else:
-            # Purely for counting if not shuffling
+            opts_list = q['opts_data']
+            if shuffle_o:
+                random.shuffle(opts_list)
+            
+            final_lets = ['A', 'B', 'C', 'D', 'E', 'F'][:len(opts_list)]
+            new_ans_letters = "".join([final_lets[i] for i, opt in enumerate(opts_list) if opt['is_correct']])
+            
+            questions_html += f'<div class="question-block"><div class="question-text">{q_num}. {q["text"]}</div><ul class="options">'
             for i, opt in enumerate(opts_list):
-                if opt['is_correct']: pos_counts[i] += 1
-
-        # Re-map correct letters
-        final_lets = ['A', 'B', 'C', 'D', 'E', 'F'][:len(opts_list)]
-        new_ans_letters = "".join([final_lets[i] for i, opt in enumerate(opts_list) if opt['is_correct']])
-        
-        questions_html += f'<div class="question-block"><div class="question-text">{q_num}. {q["text"]}</div><ul class="options">'
-        for i, opt in enumerate(opts_list):
-            questions_html += f'<li data-letter="{final_lets[i]}">{opt["text"]}</li>'
-        questions_html += "</ul>"
-        
-        if mode == "Révision":
-            questions_html += f'<div style="margin-top: 5px; padding: 8px; background: #f0fdf4; border: 1px solid #27ae60; border-radius: 4px; font-size: 9pt;">'
-            questions_html += f'<strong>Réponse : {new_ans_letters}</strong><br/>'
-            questions_html += f'<em>💡 {q["expl"]}</em>'
-            questions_html += '</div>'
-        
-        questions_html += "</div>"
-        answers_rows += f"<tr><td>{q_num}</td><td style='font-weight:bold;'>{new_ans_letters}</td><td>{q['expl']}</td></tr>"
+                questions_html += f'<li data-letter="{final_lets[i]}">{opt["text"]}</li>'
+            questions_html += "</ul>"
+            
+            if mode == "Révision":
+                questions_html += f'<div style="margin-top: 5px; padding: 8px; background: #f0fdf4; border: 1px solid #27ae60; border-radius: 4px; font-size: 9pt;">'
+                questions_html += f'<strong>Réponse : {new_ans_letters}</strong><br/>'
+                questions_html += f'<em>💡 {q["expl"]}</em>'
+                questions_html += '</div>'
+            questions_html += "</div>"
+            answers_rows += f"<tr><td>{q_num}</td><td style='font-weight:bold;'>{new_ans_letters}</td><td>{q['expl']}</td></tr>"
 
     if mode == "Examen":
-        sheet_html = generate_answer_sheet(len(raw_questions))
+        sheet_html = generate_answer_sheet(len(raw_questions)) if q_type == "QCM Classique" else ""
+        header_row = "<tr><th>N°</th><th>Réponse</th><th>Explication</th></tr>" if q_type == "QCM Classique" else "<tr><th>N°</th><th colspan='2'>Réponse</th></tr>"
+        
         footer = f"""
         </div>
         {sheet_html}
         <div style="page-break-before: always;" id="correction">
             <h2>Correction</h2>
-            <table><thead><tr><th>N°</th><th>Réponse</th><th>Explication</th></tr></thead><tbody>{answers_rows}</tbody></table>
+            <table><thead>{header_row}</thead><tbody>{answers_rows}</tbody></table>
         </div>
     </body></html>"""
     else:
@@ -319,6 +314,7 @@ with st.sidebar:
     if mode == "📄 Créateur QCM (Original)":
         doc_title = st.text_input("Titre", "Examen NLP")
         out_name = st.text_input("Nom fichier", "qcm_output")
+        q_type = st.radio("Type de QCM", ["QCM Classique", "Questions / Réponses"], help="QCM: Choix multiples | Q/R: Format Question|Réponse flashcards")
         html_mode = st.radio("Style du document HTML", ["Examen", "Révision"], help="Examen: Réponses à la fin | Révision: Réponses sous chaque question")
         c1, c2 = st.columns(2)
         with c1: shuffle_q = st.checkbox("Mélanger Questions", value=False)
@@ -374,7 +370,7 @@ if mode == "📄 Créateur QCM (Original)":
         except Exception as e:
             st.warning(f"Calcul des stats impossible : {e}")
 
-        html_out = generate_html_content(csv_in, doc_title, use_3_col, add_qr, mode=html_mode, shuffle_q=shuffle_q, shuffle_o=shuffle_o)
+        html_out = generate_html_content(csv_in, doc_title, use_3_col, add_qr, mode=html_mode, shuffle_q=shuffle_q, shuffle_o=shuffle_o, q_type=q_type)
         
         c1, c2 = st.columns(2)
         with c1:
