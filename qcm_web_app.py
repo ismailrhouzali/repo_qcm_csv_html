@@ -405,47 +405,7 @@ def generate_result_report(questions, user_answers, score, title, identity=None,
 </body></html>"""
     return html
 
-# --- PERSISTENCE & STYLING ---
-def inject_global_styles(night_mode):
-    bg_color = "#1e1e1e" if night_mode else "#f4f7f6"
-    text_color = "#e0e0e0" if night_mode else "#2c3e50"
-    card_bg = "#2d2d2d" if night_mode else "#ffffff"
-    border_color = "#444" if night_mode else "#e0e0e0"
-    
-    st.markdown(f"""
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Georgia&display=swap');
-        
-        html, body, [data-testid="stAppViewContainer"], .stApp {{
-            font-family: 'Georgia', serif !important;
-            background-color: {bg_color} !important;
-            color: {text_color} !important;
-        }}
-        
-        .stButton>button {{
-            font-family: 'Georgia', serif !important;
-        }}
-        
-        h1, h2, h3, p, span, label {{
-            font-family: 'Georgia', serif !important;
-            color: {text_color} !important;
-        }}
-        
-        .exam-card {{
-            background: {card_bg} !important;
-            padding: 25px;
-            border-radius: 12px;
-            border: 1px solid {border_color};
-            margin-bottom: 30px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }}
-        
-        [data-testid="stSidebar"] {{
-            background-color: {"#121212" if night_mode else "#ffffff"} !important;
-        }}
-    </style>
-    """, unsafe_allow_html=True)
-
+# --- PERSISTENCE JS ---
 def inject_persistence_js():
     st.components.v1.html("""
     <script>
@@ -588,12 +548,32 @@ def page_quiz():
         st.divider()
         st.subheader("📖 Mode Révision")
         rev_mode = st.toggle("Activer Flashcards QCM", value=False)
+        shuffle_q = st.toggle("Mélanger les questions", value=True)
+        shuffle_o = st.toggle("Mélanger les options", value=True)
     
     st.header("⚡ Mode Quiz Flash Interactif")
     inject_persistence_js()
     
     if not st.session_state.quiz_started and not st.session_state.score_submitted:
-        csv_quiz = st.text_area("Source CSV du Quiz", height=150, key="csv_source_input")
+        # --- MODULE LOADING Logic ---
+        st.subheader("📁 Charger un module")
+        MODULES_DIR = "modules"
+        if os.path.exists(MODULES_DIR):
+            categories = [d for d in os.listdir(MODULES_DIR) if os.path.isdir(os.path.join(MODULES_DIR, d))]
+            if categories:
+                cat = st.selectbox("Catégorie", ["Choisir..."] + categories, key="quiz_cat")
+                if cat != "Choisir...":
+                    cat_path = os.path.join(MODULES_DIR, cat)
+                    files = [f for f in os.listdir(cat_path) if f.endswith('.csv')]
+                    if files:
+                        mod_file = st.selectbox("Module", ["Choisir..."] + files, key="quiz_mod")
+                        if mod_file != "Choisir...":
+                            if st.button("📥 Charger ce module"):
+                                with open(os.path.join(cat_path, mod_file), "r", encoding="utf-8") as f:
+                                    st.session_state.csv_source_input = f.read()
+                                st.success(f"Module '{mod_file}' chargé !")
+
+        csv_quiz = st.text_area("Source CSV du Quiz", height=150, value=st.session_state.get("csv_source_input", ""), key="quiz_csv_area")
         
         st.subheader("👤 Candidat")
         c1, c2 = st.columns(2)
@@ -605,12 +585,36 @@ def page_quiz():
             st.warning("⚠️ Accès restreint. Connectez-vous dans la page 'Historique' (Simulation) pour enregistrer vos scores.")
 
         if st.button("🚀 DÉMARRER"):
-            if not csv_quiz: st.error("Collez un CSV !")
+            if not csv_quiz: st.error("Collez ou chargez un CSV !")
             else:
                 st.session_state.quiz_started = True
                 st.session_state.start_time = time.time()
                 st.session_state.user_answers = {}
-                st.session_state.shuffled_questions = parse_csv(csv_quiz)
+                
+                # Parsing and Shuffling
+                questions = parse_csv(csv_quiz)
+                if shuffle_q:
+                    questions = random.sample(questions, len(questions))
+                
+                if shuffle_o:
+                    for q_item in questions:
+                        if len(q_item['opts']) > 1:
+                            # 1. Identify original answer(s) text
+                            original_ans_letters = list(q_item['ans']) # can be 'AB'
+                            letters = ['A', 'B', 'C', 'D', 'E', 'F']
+                            correct_texts = [q_item['opts'][letters.index(l)] for l in original_ans_letters if letters.index(l) < len(q_item['opts'])]
+                            
+                            # 2. Shuffle options
+                            random.shuffle(q_item['opts'])
+                            
+                            # 3. Update answer field with new letters
+                            new_ans_letters = []
+                            for i, opt_text in enumerate(q_item['opts']):
+                                if opt_text in correct_texts:
+                                    new_ans_letters.append(letters[i])
+                            q_item['ans'] = "".join(sorted(new_ans_letters))
+
+                st.session_state.shuffled_questions = questions
                 st.session_state.current_q_idx = 0
                 st.session_state.validated_current = False
                 st.session_state.score_submitted = False
@@ -624,11 +628,8 @@ def page_quiz():
         st.progress((idx + 1) / num_q)
         st.subheader(f"Question {idx+1} / {num_q}")
         
-        st.markdown(f"""
-            <div class="exam-card" style="border-left: 10px solid #2c3e50;">
-                <h1 style="font-size: 32pt; margin-top: 0; line-height: 1.2;">{q['text']}</h1>
-            </div>
-        """, unsafe_allow_html=True)
+        st.write(f"### {q['text']}")
+        st.markdown('---')
         
         letters = ['A', 'B', 'C', 'D', 'E', 'F'][:len(q['opts'])]
         
@@ -830,10 +831,6 @@ def page_history():
 with st.sidebar:
     st.title("🚀 Navigation")
     choice = st.selectbox("Aller vers :", ["📄 PDF Transformer", "✍️ Créateur", "⚡ Quiz Interactif", "📊 Historique"])
-    st.divider()
-    night_mode = st.toggle("🌙 Mode Nuit", key="global_night_mode")
-
-inject_global_styles(night_mode)
 
 if choice == "📄 PDF Transformer": page_pdf_transformer()
 elif choice == "✍️ Créateur": page_creator()
