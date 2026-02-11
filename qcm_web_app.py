@@ -40,6 +40,22 @@ def extract_text_from_pdf(file_bytes):
     except Exception as e:
         return f"Erreur d'extraction : {e}"
 
+def validate_file_upload(uploaded_file, allowed_types=["pdf"], max_size_mb=10):
+    """Vérifie le type et la taille d'un fichier uploadé."""
+    if uploaded_file is None:
+        return True, ""
+    
+    # Check size
+    if uploaded_file.size > max_size_mb * 1024 * 1024:
+        return False, f"Fichier trop lourd (> {max_size_mb} MB)."
+    
+    # Check extension/type
+    ext = uploaded_file.name.split('.')[-1].lower()
+    if ext not in allowed_types:
+        return False, f"Format non supporté ({ext}). Attendus : {', '.join(allowed_types)}."
+    
+    return True, ""
+
 def validate_csv_data(csv_text, q_type):
     """Analyse le CSV et retourne une liste d'erreurs/avertissements."""
     errors = []
@@ -302,8 +318,9 @@ def db_save_module(name, category, m_type, content):
                       (name, category, m_type, content, date_str))
         conn.commit()
 
+@st.cache_data(ttl=600)
 def db_get_modules(m_type=None, search="", limit=None, offset=0):
-    """Récupère les modules avec options de pagination."""
+    """Récupère les modules avec options de pagination. Caché pour 10 min."""
     search = validate_input(search, max_length=100)
     
     with db_context() as conn:
@@ -312,9 +329,9 @@ def db_get_modules(m_type=None, search="", limit=None, offset=0):
         params = []
         
         if m_type:
-            m_type = validate_input(m_type, max_length=10)
+            m_type_val = validate_input(m_type, max_length=10)
             query += " AND type = ?"
-            params.append(m_type)
+            params.append(m_type_val)
         
         if search:
             query += " AND (name LIKE ? OR category LIKE ?)"
@@ -330,6 +347,21 @@ def db_get_modules(m_type=None, search="", limit=None, offset=0):
         rows = c.fetchall()
     
     return rows
+
+def db_count_modules(m_type=None, search=""):
+    """Compte le nombre total de modules pour la pagination."""
+    with db_context() as conn:
+        c = conn.cursor()
+        query = "SELECT COUNT(*) FROM educational_modules WHERE 1=1"
+        params = []
+        if m_type:
+            query += " AND type = ?"
+            params.append(m_type)
+        if search:
+            query += " AND (name LIKE ? OR category LIKE ?)"
+            params.extend([f"%{search}%", f"%{search}%"])
+        c.execute(query, params)
+        return c.fetchone()[0]
 
 def db_delete_module(m_id):
     """Supprime un module par son ID."""
@@ -838,10 +870,17 @@ def page_pdf_transformer():
 
     uploaded_pdf = st.file_uploader("Glissez votre PDF ici", type="pdf")
     if uploaded_pdf:
-        pdf_text = extract_text_from_pdf(uploaded_pdf.read())
-        if "Erreur" in pdf_text:
-            st.error(pdf_text)
-        else:
+        valid, msg = validate_file_upload(uploaded_pdf, max_size_mb=15)
+        if not valid:
+            st.error(msg)
+            return
+
+        try:
+            pdf_text = extract_text_from_pdf(uploaded_pdf.read())
+            if "Erreur" in pdf_text:
+                st.error(pdf_text)
+                return
+            
             st.success("✅ Texte extrait avec succès !")
             
             cleaned_text = " ".join(pdf_text.split())[:15000] # Limite pour les prompts
@@ -850,6 +889,10 @@ def page_pdf_transformer():
             ex_type = st.radio("Type d'exercice souhaité :", 
                               ["QCM (Interactif)", "Q&A (Flashcards)", "Synthèse & Définitions"],
                               horizontal=True)
+        except Exception as e:
+            logger.error(f"Erreur lors de l'extraction PDF : {e}")
+            st.error("Impossible de lire ce PDF. Vérifiez qu'il n'est pas protégé ou corrompu.")
+            return
             
             target_lang = st.selectbox("Langue cible :", ["Français", "Arabe", "Anglais"])
             
@@ -1354,14 +1397,28 @@ def page_discover():
     
     search_q = st.text_input("🔍 Rechercher un module...", "")
     
-    # Types filter
-    all_modules = db_get_modules(search=search_q)
+    # Pagination state
+    if 'discover_page' not in st.session_state:
+        st.session_state.discover_page = 0
     
-    if not all_modules:
+    PAGE_SIZE = 20
+    offset = st.session_state.discover_page * PAGE_SIZE
+    
+    # Get modules with pagination
+    all_modules = db_get_modules(search=search_q, limit=PAGE_SIZE + 1, offset=offset)
+    has_more = len(all_modules) > PAGE_SIZE
+    display_modules = all_modules[:PAGE_SIZE]
+    
+    total_count = db_count_modules(search=search_q)
+    
+    if not display_modules:
         st.info("Aucun module trouvé dans la base de données. Utilisez le 'Créateur' pour en ajouter.")
         return
+    
+    # Stats
+    st.caption(f"📊 {total_count} module(s) au total • Page {st.session_state.discover_page + 1}")
 
-    categories = sorted(list(set([m[2] for m in all_modules if m[2]])))
+    categories = sorted(list(set([m[2] for m in display_modules if m[2]])))
     if not categories: categories = ["Général"]
     
     tabs = st.tabs([f"📂 {cat}" for cat in categories])
@@ -1369,7 +1426,7 @@ def page_discover():
     for i, cat in enumerate(categories):
         with tabs[i]:
             # Filter modules for this category
-            cat_modules = [m for m in all_modules if m[2] == cat]
+            cat_modules = [m for m in display_modules if m[2] == cat]
             
             if not cat_modules:
                 st.info("Catégorie vide.")
@@ -1417,7 +1474,7 @@ def page_discover():
                             st.session_state.current_page = "👁️ Visualiseur"
                             st.rerun()
                     
-                    # Tooltip for download
+                    # Download buttons
                     if m_type != "SUM":
                         html_code = generate_export_html(m_content, m_name, m_type)
                         ac2.download_button("📥 HTML", data=html_code, file_name=f"{m_name}.html", mime="text/html", key=f"dl_{m_id}")
@@ -1425,6 +1482,20 @@ def page_discover():
                         html_code = generate_export_html(m_content, m_name, "SUM")
                         ac2.download_button("📥 HTML", data=html_code, file_name=f"{m_name}.html", mime="text/html", key=f"dl_{m_id}")
                     st.write("")
+    
+    # Pagination controls
+    st.divider()
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col1:
+        if st.session_state.discover_page > 0:
+            if st.button("⬅️ Page précédente"):
+                st.session_state.discover_page -= 1
+                st.rerun()
+    with col3:
+        if has_more:
+            if st.button("Page suivante ➡️"):
+                st.session_state.discover_page += 1
+                st.rerun()
 
 def page_visualizer():
     v = st.session_state.view_content
