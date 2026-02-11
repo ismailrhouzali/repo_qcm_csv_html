@@ -405,7 +405,47 @@ def generate_result_report(questions, user_answers, score, title, identity=None,
 </body></html>"""
     return html
 
-# --- PERSISTENCE JS ---
+# --- PERSISTENCE & STYLING ---
+def inject_global_styles(night_mode):
+    bg_color = "#1e1e1e" if night_mode else "#f4f7f6"
+    text_color = "#e0e0e0" if night_mode else "#2c3e50"
+    card_bg = "#2d2d2d" if night_mode else "#ffffff"
+    border_color = "#444" if night_mode else "#e0e0e0"
+    
+    st.markdown(f"""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Georgia&display=swap');
+        
+        html, body, [data-testid="stAppViewContainer"], .stApp {{
+            font-family: 'Georgia', serif !important;
+            background-color: {bg_color} !important;
+            color: {text_color} !important;
+        }}
+        
+        .stButton>button {{
+            font-family: 'Georgia', serif !important;
+        }}
+        
+        h1, h2, h3, p, span, label {{
+            font-family: 'Georgia', serif !important;
+            color: {text_color} !important;
+        }}
+        
+        .exam-card {{
+            background: {card_bg} !important;
+            padding: 25px;
+            border-radius: 12px;
+            border: 1px solid {border_color};
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }}
+        
+        [data-testid="stSidebar"] {{
+            background-color: {"#121212" if night_mode else "#ffffff"} !important;
+        }}
+    </style>
+    """, unsafe_allow_html=True)
+
 def inject_persistence_js():
     st.components.v1.html("""
     <script>
@@ -543,6 +583,12 @@ def page_creator():
         st.components.v1.html(html_out, height=600, scrolling=True)
 
 def page_quiz():
+    # Sidebar config for Quiz Page (keep only rev_mode here)
+    with st.sidebar:
+        st.divider()
+        st.subheader("📖 Mode Révision")
+        rev_mode = st.toggle("Activer Flashcards QCM", value=False)
+    
     st.header("⚡ Mode Quiz Flash Interactif")
     inject_persistence_js()
     
@@ -579,14 +625,41 @@ def page_quiz():
         st.subheader(f"Question {idx+1} / {num_q}")
         
         st.markdown(f"""
-            <div style="padding: 25px; background: white; border-left: 10px solid #2c3e50; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 30px;">
-                <h2 style="color: #2c3e50; margin-top: 0;">{q['text']}</h2>
+            <div class="exam-card" style="border-left: 10px solid #2c3e50;">
+                <h1 style="font-size: 32pt; margin-top: 0; line-height: 1.2;">{q['text']}</h1>
             </div>
         """, unsafe_allow_html=True)
         
         letters = ['A', 'B', 'C', 'D', 'E', 'F'][:len(q['opts'])]
-        selected = []
         
+        if rev_mode:
+            # FLASHCARD QCM LOGIC
+            if not st.session_state.validated_current:
+                if st.button("▶ RÉVÉLER LES RÉPONSES", type="primary", use_container_width=True):
+                    st.session_state.validated_current = True
+                    st.rerun()
+            else:
+                # Show choices with answer highlighted
+                options_html = '<div style="margin: 15px 0;">'
+                for i, l in enumerate(letters):
+                    is_correct = l in q['ans']
+                    bg = "#d4edda" if is_correct else "transparent"
+                    border = "#28a745" if is_correct else "#ddd"
+                    icon = "✅" if is_correct else ""
+                    options_html += f'<div style="padding: 12px; margin-bottom: 10px; border: 1px solid {border}; border-radius: 10px; background-color: {bg}; font-size: 14pt;"><strong>{l}.</strong> {q["opts"][i]} <span style="float: right;">{icon}</span></div>'
+                options_html += "</div>"
+                st.markdown(options_html, unsafe_allow_html=True)
+                st.info(f"💡 **Explication** : {q['expl']}")
+                if idx < num_q - 1:
+                    if st.button("➡️ SUIVANT", type="primary", use_container_width=True):
+                        st.session_state.current_q_idx += 1
+                        st.session_state.validated_current = False
+                        st.rerun()
+                else: 
+                    st.success("Module terminé !")
+            st.stop() # Skip standard quiz logic if in rev_mode
+
+        selected = []
         if not st.session_state.validated_current:
             is_multi = len(q['ans']) > 1
             if is_multi:
@@ -757,6 +830,10 @@ def page_history():
 with st.sidebar:
     st.title("🚀 Navigation")
     choice = st.selectbox("Aller vers :", ["📄 PDF Transformer", "✍️ Créateur", "⚡ Quiz Interactif", "📊 Historique"])
+    st.divider()
+    night_mode = st.toggle("🌙 Mode Nuit", key="global_night_mode")
+
+inject_global_styles(night_mode)
 
 if choice == "📄 PDF Transformer": page_pdf_transformer()
 elif choice == "✍️ Créateur": page_creator()
