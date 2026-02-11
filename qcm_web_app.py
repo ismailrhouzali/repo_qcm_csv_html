@@ -576,9 +576,11 @@ def generate_export_html(content, title, m_type, **kwargs):
                                     shuffle_q=kwargs.get('shuffle_q', False), shuffle_o=kwargs.get('shuffle_o', False),
                                     q_type="QCM Classique", add_sheet=kwargs.get('add_sheet', True))
     elif m_type == "QA":
-        return generate_qa_html(content, title)
+        return generate_html_content(content, title, use_columns=kwargs.get('use_columns', False),
+                                    q_type="Questions / Réponses")
     elif m_type == "DEF":
-        return generate_def_html(content, title)
+        return generate_html_content(content, title, use_columns=kwargs.get('use_columns', False),
+                                    q_type="Glossaire (Concept | Définition)")
     elif m_type == "SUM":
         return generate_sum_html(content, title)
     else:
