@@ -20,6 +20,17 @@ import json as json_lib
 import PyPDF2
 import sqlite3
 
+# --- LOGGING CONFIGURATION ---
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('qcm_app.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
 # --- OCR & DOCUMENT PARSING (optional imports) ---
 try:
     import pytesseract
@@ -36,17 +47,6 @@ try:
 except ImportError:
     DOCX_AVAILABLE = False
     logger.warning("Support DOCX non disponible. Installez: pip install python-docx")
-
-# --- LOGGING CONFIGURATION ---
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('qcm_app.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
 
 def extract_text_from_pdf(file_bytes, use_ocr=False):
     """Extraie le texte d'un fichier PDF (avec option OCR pour PDFs scannés)."""
