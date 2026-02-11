@@ -71,7 +71,7 @@ def validate_csv_data(csv_text, q_type):
     return errors, warnings
 
 # Configuration de la page
-st.set_page_config(page_title="QCM Master Pro v3", layout="wide", page_icon="🎯")
+st.set_page_config(page_title="QCM Master Pro v4", layout="wide", page_icon="🎯")
 
 # --- INITIALISATION STATE ---
 if 'quiz_started' not in st.session_state:
@@ -450,6 +450,140 @@ def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Exame
     
     return html_content + questions_html + footer
 
+# --- TEMPLATES HTML SPÉCIFIQUES PAR TYPE ---
+
+def generate_qa_html(content, title):
+    """Génère un HTML propre pour les Questions / Réponses."""
+    f = io.StringIO(content)
+    reader = csv.reader(f, delimiter='|')
+    next(reader, None)
+    
+    items_html = ""
+    for i, row in enumerate(reader, 1):
+        if len(row) < 2: continue
+        q, a = row[0].strip(), row[1].strip()
+        items_html += f"""
+        <div class="qa-card">
+            <div class="qa-question">❓ Q{i}. {q}</div>
+            <details>
+                <summary>▶ Afficher la réponse</summary>
+                <div class="qa-answer">{a}</div>
+            </details>
+        </div>"""
+    
+    return f"""<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"><title>{title}</title>
+<style>
+    body {{ font-family: 'Segoe UI', sans-serif; max-width: 900px; margin: auto; padding: 30px; color: #1e293b; background: #f8fafc; }}
+    h1 {{ text-align: center; color: #1e40af; border-bottom: 3px solid #3b82f6; padding-bottom: 10px; }}
+    .qa-card {{ background: white; border-radius: 10px; padding: 18px; margin-bottom: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); border-left: 4px solid #3b82f6; }}
+    .qa-question {{ font-weight: 700; font-size: 1.05em; color: #1e293b; }}
+    details {{ margin-top: 8px; }}
+    details summary {{ cursor: pointer; font-weight: 600; color: #3b82f6; list-style: none; }}
+    details summary::-webkit-details-marker {{ display: none; }}
+    .qa-answer {{ padding: 12px; background: #eff6ff; border-radius: 6px; margin-top: 6px; line-height: 1.6; }}
+    @media print {{ body {{ background: white; }} .qa-card {{ box-shadow: none; border: 1px solid #ddd; }} }}
+</style>
+</head>
+<body>
+    <h1>❓ {title}</h1>
+    {items_html}
+</body></html>"""
+
+def generate_def_html(content, title):
+    """Génère un HTML propre pour les Définitions / Glossaire."""
+    f = io.StringIO(content)
+    reader = csv.reader(f, delimiter='|')
+    next(reader, None)
+    
+    rows_html = ""
+    for i, row in enumerate(reader, 1):
+        if len(row) < 2: continue
+        concept, definition = row[0].strip(), row[1].strip()
+        rows_html += f"""<tr><td class="concept">{concept}</td><td class="definition">{definition}</td></tr>"""
+    
+    return f"""<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"><title>{title}</title>
+<style>
+    body {{ font-family: 'Segoe UI', sans-serif; max-width: 960px; margin: auto; padding: 30px; color: #1e293b; background: #f8fafc; }}
+    h1 {{ text-align: center; color: #7c3aed; border-bottom: 3px solid #8b5cf6; padding-bottom: 10px; }}
+    table {{ width: 100%; border-collapse: collapse; margin-top: 20px; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }}
+    th {{ background: #7c3aed; color: white; padding: 14px; text-align: left; font-size: 1em; }}
+    td {{ padding: 12px 14px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }}
+    tr:hover {{ background: #faf5ff; }}
+    .concept {{ font-weight: 700; width: 25%; color: #6d28d9; font-size: 1em; }}
+    .definition {{ line-height: 1.6; color: #334155; }}
+    @media print {{ body {{ background: white; }} table {{ box-shadow: none; border: 1px solid #ddd; }} }}
+</style>
+</head>
+<body>
+    <h1>📜 {title}</h1>
+    <table>
+        <thead><tr><th>Concept</th><th>Définition</th></tr></thead>
+        <tbody>{rows_html}</tbody>
+    </table>
+</body></html>"""
+
+def generate_sum_html(content, title):
+    """Génère un HTML propre pour les synthèses/résumés Markdown."""
+    # Simple markdown-to-html conversion for key patterns
+    import re
+    html_body = content
+    # Headers
+    html_body = re.sub(r'^### (.+)$', r'<h3>\1</h3>', html_body, flags=re.MULTILINE)
+    html_body = re.sub(r'^## (.+)$', r'<h2>\1</h2>', html_body, flags=re.MULTILINE)
+    html_body = re.sub(r'^# (.+)$', r'<h1 class="sub">\1</h1>', html_body, flags=re.MULTILINE)
+    # Bold / Italic
+    html_body = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', html_body)
+    html_body = re.sub(r'\*(.+?)\*', r'<em>\1</em>', html_body)
+    # Lists
+    html_body = re.sub(r'^- (.+)$', r'<li>\1</li>', html_body, flags=re.MULTILINE)
+    html_body = re.sub(r'(<li>.*?</li>\n?)+', r'<ul>\g<0></ul>', html_body)
+    # Paragraphs
+    html_body = re.sub(r'\n\n', '</p><p>', html_body)
+    html_body = f'<p>{html_body}</p>'
+    
+    return f"""<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"><title>{title}</title>
+<style>
+    body {{ font-family: 'Georgia', serif; max-width: 800px; margin: auto; padding: 40px; color: #1e293b; background: #fffbeb; line-height: 1.8; }}
+    h1.main-title {{ text-align: center; color: #92400e; border-bottom: 3px solid #f59e0b; padding-bottom: 12px; font-size: 1.8em; }}
+    h1.sub, h2, h3 {{ color: #92400e; margin-top: 24px; }}
+    h2 {{ border-left: 4px solid #f59e0b; padding-left: 12px; }}
+    ul {{ padding-left: 20px; }}
+    li {{ margin-bottom: 6px; }}
+    strong {{ color: #b45309; }}
+    blockquote {{ border-left: 4px solid #fbbf24; padding: 12px 16px; background: #fef3c7; border-radius: 4px; margin: 16px 0; }}
+    @media print {{ body {{ background: white; padding: 20px; }} }}
+</style>
+</head>
+<body>
+    <h1 class="main-title">📝 {title}</h1>
+    {html_body}
+</body></html>"""
+
+def generate_export_html(content, title, m_type, **kwargs):
+    """Dispatche vers le bon template HTML selon le type de contenu."""
+    if m_type == "QCM":
+        return generate_html_content(content, title, use_columns=kwargs.get('use_columns', True), 
+                                    add_qr=kwargs.get('add_qr', True), mode=kwargs.get('mode', 'Examen'),
+                                    shuffle_q=kwargs.get('shuffle_q', False), shuffle_o=kwargs.get('shuffle_o', False),
+                                    q_type="QCM Classique", add_sheet=kwargs.get('add_sheet', True))
+    elif m_type == "QA":
+        return generate_qa_html(content, title)
+    elif m_type == "DEF":
+        return generate_def_html(content, title)
+    elif m_type == "SUM":
+        return generate_sum_html(content, title)
+    else:
+        return generate_html_content(content, title, use_columns=True)
+
 def perform_stats(csv_text):
     f = io.StringIO(csv_text); reader = csv.reader(f, delimiter='|'); next(reader, None)
     total, single, multi, all_ans = 0, 0, 0, []
@@ -652,7 +786,8 @@ def page_creator():
         st.divider()
         doc_title = st.text_input("Titre", "Examen NLP")
         out_name = st.text_input("Nom fichier", "output_module")
-        q_type = st.radio("Type", ["QCM Classique", "Questions / Réponses", "Glossaire (Concept | Définition)", "Synthèse (Markdown)"])
+        q_type = st.radio("Type", ["QCM Classique", "Questions / Réponses", "Glossaire (Concept | Définition)", "Synthèse (Markdown)"],
+                          index=["QCM Classique", "Questions / Réponses", "Glossaire (Concept | Définition)", "Synthèse (Markdown)"].index(st.session_state.get('editing_type', "QCM Classique")))
         html_mode = st.radio("Style", ["Examen", "Révision"])
         c1, c2 = st.columns(2)
         shuffle_q = c1.checkbox("Mélanger Q", value=False)
@@ -661,16 +796,15 @@ def page_creator():
         add_qr = st.checkbox("QR Code", value=True)
         add_sheet = st.checkbox("Feuille Réponses", value=True)
 
+    # Utiliser l'editing_name si on vient de l'édition CRUD
+    if st.session_state.get('editing_name'):
+        out_name = st.session_state.editing_name
+
     default_val = st.session_state.get("csv_source_input", "")
     if not default_val:
         default_val = st.session_state.get("pdf_extracted_text", "")
         
-    doc_title = st.text_input("Titre", "Examen NLP")
-    out_name = st.text_input("Nom fichier / Module", value=st.session_state.get('editing_name', "output_module"))
-    q_type = st.radio("Type", ["QCM Classique", "Questions / Réponses", "Glossaire (Concept | Définition)", "Synthèse (Markdown)"], 
-                      index=["QCM Classique", "Questions / Réponses", "Glossaire (Concept | Définition)", "Synthèse (Markdown)"].index(st.session_state.get('editing_type', "QCM Classique")))
-    
-    csv_in = st.text_area("Contenu (|)", height=250, value=st.session_state.get("csv_source_input", st.session_state.get("pdf_extracted_text", "")))
+    csv_in = st.text_area("Contenu (|)", height=250, value=default_val)
     st.session_state.csv_source_input = csv_in
     
     if csv_in:
@@ -707,7 +841,15 @@ def page_creator():
             st.info(f"📍 Distribution : {dist_str}")
         except: pass
 
-        html_out = generate_html_content(csv_in, doc_title, use_3_col, add_qr, mode=html_mode, shuffle_q=shuffle_q, shuffle_o=shuffle_o, q_type=q_type, add_sheet=add_sheet)
+        # Generate HTML with the correct template
+        m_type_for_export = "QCM"
+        if "Questions" in q_type: m_type_for_export = "QA"
+        elif "Glossaire" in q_type: m_type_for_export = "DEF"
+        elif "Synthèse" in q_type: m_type_for_export = "SUM"
+        
+        html_out = generate_export_html(csv_in, doc_title, m_type_for_export, 
+                                        use_columns=use_3_col, add_qr=add_qr, mode=html_mode,
+                                        shuffle_q=shuffle_q, shuffle_o=shuffle_o, add_sheet=add_sheet)
         
         c1, c2 = st.columns(2)
         with c1:
@@ -1158,10 +1300,11 @@ def page_discover():
                     
                     # Tooltip for download
                     if m_type != "SUM":
-                        html_code = generate_html_content(m_content, m_name, use_columns=True)
+                        html_code = generate_export_html(m_content, m_name, m_type)
                         ac2.download_button("📥 HTML", data=html_code, file_name=f"{m_name}.html", mime="text/html", key=f"dl_{m_id}")
                     else:
-                        ac2.download_button("📥 Markdown", data=m_content, file_name=f"{m_name}.md", mime="text/plain", key=f"dl_{m_id}")
+                        html_code = generate_export_html(m_content, m_name, "SUM")
+                        ac2.download_button("📥 HTML", data=html_code, file_name=f"{m_name}.html", mime="text/html", key=f"dl_{m_id}")
                     st.write("")
 
 def page_visualizer():
@@ -1242,8 +1385,8 @@ def page_admin_crud():
                         st.success("Supprimé !")
                         st.rerun()
                     
-                    html_code = generate_html_content(mcont, mname, use_columns=True) if mtype != "SUM" else mcont
-                    c3.download_button("📥 EXPORT", data=html_code, file_name=f"{mname}.html", key=f"dl_admin_{mid}")
+                    html_code = generate_export_html(mcont, mname, mtype)
+                    c3.download_button("📥 EXPORT HTML", data=html_code, file_name=f"{mname}.html", key=f"dl_admin_{mid}")
 
 def page_summaries():
     # Ancienne page maintenue pour compatibilité ou simplifiée
