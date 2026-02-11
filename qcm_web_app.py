@@ -96,6 +96,10 @@ if 'verification_code' not in st.session_state:
     st.session_state.verification_code = None
 if 'confirm_exit' not in st.session_state:
     st.session_state.confirm_exit = False
+if 'current_course_name' not in st.session_state:
+    st.session_state.current_course_name = "Quiz Manuel"
+if 'auto_load_csv' not in st.session_state:
+    st.session_state.auto_load_csv = None
 
 # --- DATABASE LOGIC ---
 DB_NAME = "qcm_master.db"
@@ -129,6 +133,16 @@ def db_save_score(email, course, score, total):
               (email, course, score, total, date_str))
     conn.commit()
     conn.close()
+
+def db_get_best_score(email, course):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT MAX(score), total FROM history WHERE email = ? AND course = ?", (email, course))
+    res = c.fetchone()
+    conn.close()
+    if res and res[0] is not None:
+        return f"{res[0]} / {res[1]}"
+    return "N/A"
 
 def db_get_history(email):
     conn = sqlite3.connect(DB_NAME)
@@ -593,12 +607,18 @@ def page_quiz():
         st.divider()
         st.subheader("📖 Mode Révision")
         rev_mode = st.toggle("Activer Flashcards QCM", value=False)
-        shuffle_q = st.toggle("Mélanger les questions", value=True)
+        shuffle_q = st.toggle("Mélanger les questions", value=False)
         shuffle_o = st.toggle("Mélanger les options", value=True)
     
     st.header("⚡ Mode Quiz Flash Interactif")
     inject_persistence_js()
     
+    # Handle pre-loaded module from Explorer
+    if "auto_load_csv" in st.session_state and st.session_state.auto_load_csv:
+        st.session_state.csv_source_input = st.session_state.auto_load_csv
+        st.session_state.auto_load_csv = None # Reset
+        st.info("📦 Module chargé depuis l'Explorateur.")
+
     if not st.session_state.quiz_started and not st.session_state.score_submitted:
         # --- MODULE LOADING Logic ---
         st.subheader("📁 Charger un module")
@@ -635,6 +655,10 @@ def page_quiz():
                 st.session_state.quiz_started = True
                 st.session_state.start_time = time.time()
                 st.session_state.user_answers = {}
+                
+                # Identify course name for history
+                mod_name = st.session_state.get("quiz_mod", "Quiz Manuel")
+                st.session_state.current_course_name = mod_name if mod_name != "Choisir..." else "Quiz Manuel"
                 
                 # Parsing and Shuffling
                 questions = parse_csv(csv_quiz)
@@ -811,11 +835,11 @@ def page_quiz():
                             score += 1
                     
                     if st.session_state.identity["verified"]:
-                        db_save_score(st.session_state.identity["email"], "Quiz Interactif", score, num_q)
+                        db_save_score(st.session_state.identity["email"], st.session_state.current_course_name, score, num_q)
                     
                     st.session_state.history.append({
                         "Date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-                        "Examen": "Quiz Interactif",
+                        "Examen": st.session_state.current_course_name,
                         "Email": st.session_state.identity["email"] if st.session_state.identity["verified"] else "Anonyme",
                         "Score": f"{score} / {num_q}"
                     })
@@ -904,12 +928,68 @@ def page_history():
         else:
             st.table(df_db)
 
+def page_discover():
+    st.header("🔍 Explorateur de Modules")
+    st.write("Retrouvez ici tous les QCM créés, téléchargez les versions HTML ou lancez un quiz directement.")
+    
+    MODULES_DIR = "modules"
+    if not os.path.exists(MODULES_DIR):
+        st.info("Aucun module créé pour le moment. Allez dans 'Créateur' pour commencer.")
+        return
+
+    categories = [d for d in os.listdir(MODULES_DIR) if os.path.isdir(os.path.join(MODULES_DIR, d))]
+    
+    if not categories:
+        st.info("Aucun module trouvé.")
+        return
+
+    for cat in categories:
+        st.subheader(f"📂 {cat}")
+        cat_path = os.path.join(MODULES_DIR, cat)
+        files = [f for f in os.listdir(cat_path) if f.endswith('.csv')]
+        
+        if not files:
+            st.write("*Vide*")
+            continue
+            
+        for f in files:
+            with st.container():
+                c1, c2, c3, c4 = st.columns([0.4, 0.2, 0.2, 0.2])
+                c1.write(f"📄 **{f}**")
+                
+                # Best score from DB
+                best = db_get_best_score(st.session_state.identity["email"], f) if st.session_state.identity["verified"] else "Connectez-vous"
+                c2.write(f"🏆 Best: `{best}`")
+                
+                # Actions
+                full_path = os.path.join(cat_path, f)
+                with open(full_path, "r", encoding="utf-8") as file_data:
+                    csv_content = file_data.read()
+                
+                if c3.button("🚀 Quiz", key=f"launch_{f}"):
+                    st.session_state.auto_load_csv = csv_content
+                    st.session_state.quiz_mod = f
+                    st.session_state.current_page = "⚡ Quiz Interactif"
+                    st.rerun()
+
+                # HTML Download
+                html_code = generate_html_content(csv_content, f.replace(".csv", ""), use_columns=True)
+                c4.download_button("📥 HTML", data=html_code, file_name=f.replace(".csv", ".html"), mime="text/html", key=f"dl_{f}")
+            st.divider()
+
 # --- MAIN NAVIGATION ---
+if "current_page" not in st.session_state:
+    st.session_state.current_page = "📄 PDF Transformer"
+
 with st.sidebar:
     st.title("🚀 Navigation")
-    choice = st.selectbox("Aller vers :", ["📄 PDF Transformer", "✍️ Créateur", "⚡ Quiz Interactif", "📊 Historique"])
+    # Using index to handle redirects
+    pages = ["📄 PDF Transformer", "✍️ Créateur", "🔍 Explorer", "⚡ Quiz Interactif", "📊 Historique"]
+    choice = st.selectbox("Aller vers :", pages, index=pages.index(st.session_state.current_page))
+    st.session_state.current_page = choice
 
-if choice == "📄 PDF Transformer": page_pdf_transformer()
-elif choice == "✍️ Créateur": page_creator()
-elif choice == "⚡ Quiz Interactif": page_quiz()
-elif choice == "📊 Historique": page_history()
+if st.session_state.current_page == "📄 PDF Transformer": page_pdf_transformer()
+elif st.session_state.current_page == "✍️ Créateur": page_creator()
+elif st.session_state.current_page == "🔍 Explorer": page_discover()
+elif st.session_state.current_page == "⚡ Quiz Interactif": page_quiz()
+elif st.session_state.current_page == "📊 Historique": page_history()
