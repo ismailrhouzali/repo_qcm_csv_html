@@ -93,6 +93,8 @@ if 'history' not in st.session_state:
     st.session_state.history = []
 if 'verification_code' not in st.session_state:
     st.session_state.verification_code = None
+if 'confirm_exit' not in st.session_state:
+    st.session_state.confirm_exit = False
 
 # --- FONCTIONS UTILES ---
 def convert_html_to_pdf(source_html):
@@ -626,8 +628,26 @@ def page_quiz():
         q = questions[idx]
         
         st.progress((idx + 1) / num_q)
-        st.subheader(f"Question {idx+1} / {num_q}")
         
+        # --- QUIZ HEADER with EXIT button ---
+        head_c1, head_c2 = st.columns([0.85, 0.15])
+        head_c1.subheader(f"Question {idx+1} / {num_q}")
+        if head_c2.button("🚪 QUITTER", use_container_width=True):
+            st.session_state.confirm_exit = True
+            st.rerun()
+
+        if st.session_state.confirm_exit:
+            st.warning("⚠️ **Confirmer la sortie ?** Votre progression restera sauvegardée localement.")
+            exit_c1, exit_c2 = st.columns(2)
+            if exit_c1.button("✅ OUI, QUITTER", type="primary", use_container_width=True):
+                st.session_state.confirm_exit = False
+                st.session_state.quiz_started = False
+                st.rerun()
+            if exit_c2.button("❌ ANNULER", use_container_width=True):
+                st.session_state.confirm_exit = False
+                st.rerun()
+            st.stop()
+
         st.write(f"### {q['text']}")
         st.markdown('---')
         
@@ -715,7 +735,11 @@ def page_quiz():
         st.markdown('---')
         
         if not st.session_state.validated_current:
-            if st.button("✔️ VALIDER POUR VOIR LA RÉPONSE", type="primary", use_container_width=True):
+            is_disabled = (not selected)
+            if is_disabled:
+                st.info("💡 Sélectionnez au moins une réponse pour valider.")
+            
+            if st.button("✔️ VALIDER POUR VOIR LA RÉPONSE", type="primary", use_container_width=True, disabled=is_disabled):
                 st.session_state.validated_current = True
                 st.rerun()
         else:
