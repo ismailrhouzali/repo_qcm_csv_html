@@ -8,7 +8,62 @@ from collections import Counter
 import webbrowser
 import pdfkit
 import random
+import datetime
 from datetime import timedelta
+
+# --- ADVANCED LIBS ---
+import PyPDF2
+
+def extract_text_from_pdf(file_bytes):
+    """Extraie le texte d'un fichier PDF uploader."""
+    try:
+        reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
+        text = ""
+        for page in reader.pages:
+            text += page.extract_text() + "\n"
+        return text.strip()
+    except Exception as e:
+        return f"Erreur d'extraction : {e}"
+
+def validate_csv_data(csv_text, q_type):
+    """Analyse le CSV et retourne une liste d'erreurs/avertissements."""
+    errors = []
+    warnings = []
+    f = io.StringIO(csv_text.strip())
+    reader = csv.reader(f, delimiter='|')
+    
+    # Check header
+    header = next(reader, None)
+    if not header:
+        return ["Le fichier est vide."], []
+
+    for i, row in enumerate(reader, 1):
+        if not any(row): continue # Skip empty lines
+        
+        if q_type == "QCM Classique":
+            if len(row) < 7:
+                errors.append(f"Ligne {i} : Colonnes insuffisantes ({len(row)}/7 minimum).")
+                continue
+            
+            # Check options vs answer
+            q_text = row[0].strip()
+            ans = (row[7] if len(row) >= 9 else row[5]).strip().upper()
+            opts = [row[j] for j in range(1, 7 if len(row) >= 9 else 5) if row[j].strip()]
+            num_opts = len(opts)
+            lets = "ABCDEF"[:num_opts]
+            
+            if not ans:
+                errors.append(f"Ligne {i} : Réponse manquante.")
+            else:
+                for char in ans.replace(',', '').replace(' ', ''):
+                    if char not in lets:
+                        errors.append(f"Ligne {i} : La réponse '{char}' n'est pas cohérente avec les {num_opts} options fournies.")
+        
+        elif q_type in ["Questions / Réponses", "Glossaire (Concept | Définition)"]:
+            if len(row) < 2:
+                errors.append(f"Ligne {i} : Format attendu 'A|B', trouvé seulement {len(row)} colonnes.")
+    
+    return errors, warnings
 
 # Configuration de la page
 st.set_page_config(page_title="QCM Master Pro v3", layout="wide", page_icon="🎯")
@@ -321,6 +376,44 @@ with st.sidebar:
     mode = st.radio("Mode de l'application", ["📄 Créateur QCM (Original)", "⚡ Quiz Flash Interactif"], key="main_mode_radio")
     
     if mode == "📄 Créateur QCM (Original)":
+        st.divider()
+        st.subheader("📁 Gestion des Modules")
+        
+        # Ensure modules directory exists
+        MOD_DIR = "modules"
+        if not os.path.exists(MOD_DIR): os.makedirs(MOD_DIR)
+        
+        # Category Management
+        categories = [d for d in os.listdir(MOD_DIR) if os.path.isdir(os.path.join(MOD_DIR, d))]
+        if not categories:
+            if not os.path.exists(os.path.join(MOD_DIR, "Général")): 
+                os.makedirs(os.path.join(MOD_DIR, "Général"))
+            categories = ["Général"]
+            
+        sel_cat = st.selectbox("Catégorie", categories)
+        
+        # Load Module
+        cat_path = os.path.join(MOD_DIR, sel_cat)
+        mod_files = [f for f in os.listdir(cat_path) if f.endswith(".csv")]
+        if mod_files:
+            sel_mod = st.selectbox("Charger un module", ["-- Choisir --"] + mod_files)
+            if sel_mod != "-- Choisir --":
+                if st.button("📂 Charger"):
+                    with open(os.path.join(cat_path, sel_mod), "r", encoding="utf-8") as f:
+                        st.session_state.csv_source_input = f.read()
+                    st.success(f"Module '{sel_mod}' chargé !")
+                    st.rerun()
+        
+        # New Category
+        new_cat = st.text_input("➕ Nouvelle Catégorie")
+        if st.button("Créer Catégorie") and new_cat:
+            new_path = os.path.join(MOD_DIR, new_cat)
+            if not os.path.exists(new_path):
+                os.makedirs(new_path)
+                st.success(f"Catégorie '{new_cat}' créée !")
+                st.rerun()
+
+        st.divider()
         doc_title = st.text_input("Titre", "Examen NLP")
         out_name = st.text_input("Nom fichier", "qcm_output")
         q_type = st.radio("Type de QCM", ["QCM Classique", "Questions / Réponses", "Glossaire (Concept | Définition)"], help="QCM: Choix multiples | Q/R: Flashcards | Glossaire: Tableau de définitions")
@@ -381,9 +474,41 @@ if mode == "📄 Créateur QCM (Original)":
         > Format CSV : `Concept|Définition` (Délimiteur '|')
         """)
 
-    csv_in = st.text_area("Collez votre CSV (|)", height=250)
+    # PDF Uploader Section
+    st.subheader("📄 Import PDF direct (Extraction de texte)")
+    uploaded_pdf = st.file_uploader("Glissez votre PDF ici pour extraire le texte", type="pdf")
+    if uploaded_pdf:
+        pdf_text = extract_text_from_pdf(uploaded_pdf.read())
+        if "Erreur" in pdf_text:
+            st.error(pdf_text)
+        else:
+            st.success("Texte extrait avec succès ! Copiez-le ci-dessous pour l'envoyer à votre LLM.")
+            st.text_area("Texte extrait du PDF", pdf_text, height=150)
+
+    st.divider()
+    csv_in = st.text_area("Collez votre CSV (|)", height=250, value=st.session_state.get("csv_source_input", ""))
+    st.session_state.csv_source_input = csv_in
     
     if csv_in:
+        # --- CSV VALIDATION ---
+        errors, warnings = validate_csv_data(csv_in, q_type)
+        if errors:
+            st.error("❌ Erreurs détectées dans le CSV :")
+            for e in errors: st.write(f"- {e}")
+        if warnings:
+            st.warning("⚠️ Avertissements :")
+            for w in warnings: st.write(f"- {w}")
+            
+        # --- SAVE MODULE ---
+        with st.expander("💾 Sauvegarder ce contenu comme Module"):
+            save_name = st.text_input("Nom du fichier (ex: quiz_chapitre_1)", value=out_name)
+            if st.button("💾 Enregistrer dans " + sel_cat):
+                save_path = os.path.join("modules", sel_cat, f"{save_name}.csv")
+                with open(save_path, "w", encoding="utf-8") as f:
+                    f.write(csv_in)
+                st.success(f"Module '{save_name}.csv' enregistré dans '{sel_cat}' !")
+                st.rerun()
+
         # --- CALCUL ET AFFICHAGE DES STATISTIQUES ---
         try:
             total_stats, sing_stats, mult_stats, dist_stats = perform_stats(csv_in)
