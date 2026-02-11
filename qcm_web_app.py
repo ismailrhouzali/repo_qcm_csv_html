@@ -81,7 +81,10 @@ def generate_answer_sheet(num_questions):
 
 def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Examen", shuffle_q=False, shuffle_o=False, q_type="QCM Classique"):
     col_css = "column-count: 3; -webkit-column-count: 3; -moz-column-count: 3; column-gap: 30px;" if use_columns else ""
-    qr_code_html = f'<div style="text-align:right;"><img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=https://qcmwebapppy-bfxlibcaaelehxbv6qjyif.streamlit.app/#correction" alt="QR Correction" style="width:80px;"/> <br/><small>Scan pour correction</small></div>' if add_qr else ""
+    # Only show QR for QCM mode as it links to a correction sheet
+    qr_code_html = ""
+    if add_qr and q_type == "QCM Classique":
+        qr_code_html = f'<div style="text-align:right;"><img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=https://qcmwebapppy-bfxlibcaaelehxbv6qjyif.streamlit.app/#correction" alt="QR Correction" style="width:80px;"/> <br/><small>Scan pour correction</small></div>'
     
     html_content = f"""<!DOCTYPE html>
 <html lang="fr">
@@ -98,8 +101,10 @@ def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Exame
     .options li {{ margin-bottom: 2px; }}
     .options li::before {{ content: attr(data-letter) ". "; font-weight: bold; }}
     table {{ width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 9pt; }}
-    th, td {{ border: 1px solid #000; padding: 5px; text-align: left; }}
+    th, td {{ border: 1px solid #000; padding: 8px; text-align: left; vertical-align: top; }}
     th {{ background-color: #eee; }}
+    .col-concept {{ width: 20%; font-weight: bold; }}
+    .col-def {{ width: 80%; }}
     details {{ cursor: pointer; margin-top: 5px; font-size: 9pt; }}
     details summary {{ list-style: none; font-weight: bold; color: #3498db; }}
     details summary::-webkit-details-marker {{ display: none; }}
@@ -120,13 +125,13 @@ def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Exame
     
     raw_questions = []
     
-    if q_type == "Questions / Réponses":
+    if q_type in ["Questions / Réponses", "Glossaire (Concept | Définition)"]:
         for row in reader:
             if len(row) < 2: continue
             raw_questions.append({
                 'text': row[0].strip(),
                 'ans': row[1].strip(),
-                'type': 'QA'
+                'type': 'QA' if q_type == "Questions / Réponses" else 'GLOSSARY'
             })
     else:
         for row in reader:
@@ -156,51 +161,55 @@ def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Exame
 
     questions_html = ""
     answers_rows = ""
+    glossary_table = ""
     
-    for q_idx, q in enumerate(raw_questions):
-        q_num = q_idx + 1
-        
-        if q.get('type') == 'QA':
-            questions_html += f"""
-            <div class="question-block">
-                <div class="question-text">{q_num}. {q['text']}</div>
-                <details>
-                    <summary>▶ Réponse</summary>
-                    <div class="qa-answer">{q['ans']}</div>
-                </details>
-            </div>"""
-            answers_rows += f"<tr><td>{q_num}</td><td colspan='2' style='font-weight:bold;'>{q['ans']}</td></tr>"
-        else:
-            opts_list = q['opts_data']
-            if shuffle_o:
-                random.shuffle(opts_list)
-            
-            final_lets = ['A', 'B', 'C', 'D', 'E', 'F'][:len(opts_list)]
-            new_ans_letters = "".join([final_lets[i] for i, opt in enumerate(opts_list) if opt['is_correct']])
-            
-            questions_html += f'<div class="question-block"><div class="question-text">{q_num}. {q["text"]}</div><ul class="options">'
-            for i, opt in enumerate(opts_list):
-                questions_html += f'<li data-letter="{final_lets[i]}">{opt["text"]}</li>'
-            questions_html += "</ul>"
-            
-            if mode == "Révision":
-                questions_html += f'<div style="margin-top: 5px; padding: 8px; background: #f0fdf4; border: 1px solid #27ae60; border-radius: 4px; font-size: 9pt;">'
-                questions_html += f'<strong>Réponse : {new_ans_letters}</strong><br/>'
-                questions_html += f'<em>💡 {q["expl"]}</em>'
-                questions_html += '</div>'
-            questions_html += "</div>"
-            answers_rows += f"<tr><td>{q_num}</td><td style='font-weight:bold;'>{new_ans_letters}</td><td>{q['expl']}</td></tr>"
+    if q_type == "Glossaire (Concept | Définition)":
+        glossary_table = "<table><thead><tr><th>Concept</th><th>Définition</th></tr></thead><tbody>"
+        for q in raw_questions:
+            glossary_table += f"<tr><td class='col-concept'>{q['text']}</td><td class='col-def'>{q['ans']}</td></tr>"
+        glossary_table += "</tbody></table>"
+        questions_html = glossary_table
+    else:
+        for q_idx, q in enumerate(raw_questions):
+            q_num = q_idx + 1
+            if q.get('type') == 'QA':
+                questions_html += f"""
+                <div class="question-block">
+                    <div class="question-text">{q_num}. {q['text']}</div>
+                    <details>
+                        <summary>▶ Réponse</summary>
+                        <div class="qa-answer">{q['ans']}</div>
+                    </details>
+                </div>"""
+                answers_rows += f"<tr><td>{q_num}</td><td colspan='2' style='font-weight:bold;'>{q['ans']}</td></tr>"
+            else:
+                opts_list = q['opts_data']
+                if shuffle_o: random.shuffle(opts_list)
+                final_lets = ['A', 'B', 'C', 'D', 'E', 'F'][:len(opts_list)]
+                new_ans_letters = "".join([final_lets[i] for i, opt in enumerate(opts_list) if opt['is_correct']])
+                
+                questions_html += f'<div class="question-block"><div class="question-text">{q_num}. {q["text"]}</div><ul class="options">'
+                for i, opt in enumerate(opts_list):
+                    questions_html += f'<li data-letter="{final_lets[i]}">{opt["text"]}</li>'
+                questions_html += "</ul>"
+                
+                if mode == "Révision":
+                    questions_html += f'<div style="margin-top: 5px; padding: 8px; background: #f0fdf4; border: 1px solid #27ae60; border-radius: 4px; font-size: 9pt;">'
+                    questions_html += f'<strong>Réponse : {new_ans_letters}</strong><br/>'
+                    questions_html += f'<em>💡 {q["expl"]}</em>'
+                    questions_html += '</div>'
+                questions_html += "</div>"
+                answers_rows += f"<tr><td>{q_num}</td><td style='font-weight:bold;'>{new_ans_letters}</td><td>{q['expl']}</td></tr>"
 
-    if mode == "Examen":
-        sheet_html = generate_answer_sheet(len(raw_questions)) if q_type == "QCM Classique" else ""
-        header_row = "<tr><th>N°</th><th>Réponse</th><th>Explication</th></tr>" if q_type == "QCM Classique" else "<tr><th>N°</th><th colspan='2'>Réponse</th></tr>"
-        
+    # Only show correction footer for QCM mode
+    if mode == "Examen" and q_type == "QCM Classique":
+        sheet_html = generate_answer_sheet(len(raw_questions))
         footer = f"""
         </div>
         {sheet_html}
         <div style="page-break-before: always;" id="correction">
             <h2>Correction</h2>
-            <table><thead>{header_row}</thead><tbody>{answers_rows}</tbody></table>
+            <table><thead><tr><th>N°</th><th>Réponse</th><th>Explication</th></tr></thead><tbody>{answers_rows}</tbody></table>
         </div>
     </body></html>"""
     else:
@@ -314,7 +323,7 @@ with st.sidebar:
     if mode == "📄 Créateur QCM (Original)":
         doc_title = st.text_input("Titre", "Examen NLP")
         out_name = st.text_input("Nom fichier", "qcm_output")
-        q_type = st.radio("Type de QCM", ["QCM Classique", "Questions / Réponses"], help="QCM: Choix multiples | Q/R: Format Question|Réponse flashcards")
+        q_type = st.radio("Type de QCM", ["QCM Classique", "Questions / Réponses", "Glossaire (Concept | Définition)"], help="QCM: Choix multiples | Q/R: Flashcards | Glossaire: Tableau de définitions")
         html_mode = st.radio("Style du document HTML", ["Examen", "Révision"], help="Examen: Réponses à la fin | Révision: Réponses sous chaque question")
         c1, c2 = st.columns(2)
         with c1: shuffle_q = st.checkbox("Mélanger Questions", value=False)
@@ -353,6 +362,25 @@ with st.sidebar:
 # --- MAIN INTERFACE ---
 if mode == "📄 Créateur QCM (Original)":
     st.header("🎯 QCM Master Pro (Export HTML/PDF)")
+    
+    with st.expander("💡 Guide : Prompts pour générer le CSV avec un LLM"):
+        st.markdown("""
+        Copiez-collez ces prompts dans ChatGPT/Claude avec votre cours (PDF) pour obtenir le format correct :
+        
+        **1. Pour QCM Classique :**
+        > Agit comme un expert pédagogique. À partir du texte suivant, génère un QCM de [X] questions au format CSV avec le délimiteur '|'.
+        > Colonnes : `Question|A|B|C|D|E|F|Réponse|Explication`
+        > (Laisse les colonnes vides si moins de 6 options, ex: |E|F| s'il n'y a que 4 choix).
+        
+        **2. Pour Questions / Réponses (Flashcards) :**
+        > Agit comme un tuteur. Extrait les points clés du cours sous forme de Questions/Réponses simples.
+        > Format CSV : `Question|Réponse` (Délimiteur '|')
+        
+        **3. Pour Glossaire (Définitions) :**
+        > Extrait tous les termes techniques et leurs définitions de ce cours.
+        > Format CSV : `Concept|Définition` (Délimiteur '|')
+        """)
+
     csv_in = st.text_area("Collez votre CSV (|)", height=250)
     
     if csv_in:
