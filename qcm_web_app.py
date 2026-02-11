@@ -100,6 +100,8 @@ if 'current_course_name' not in st.session_state:
     st.session_state.current_course_name = "Quiz Manuel"
 if 'auto_load_csv' not in st.session_state:
     st.session_state.auto_load_csv = None
+if 'view_content' not in st.session_state:
+    st.session_state.view_content = {"name": "", "content": "", "type": ""}
 
 # --- DATABASE LOGIC ---
 DB_NAME = "qcm_master.db"
@@ -531,20 +533,7 @@ def load_persistence_js():
 
 def page_pdf_transformer():
     st.header("📄 PDF Transformer (Extraction & IA)")
-    st.info("Utilisez cet outil pour extraire le texte de vos PDF de cours et le transformer en QCM via les prompts fournis.")
-    
-    with st.expander("💡 Guide : Prompts pour LLM"):
-        st.markdown("""
-        **1. Pour QCM Classique :**
-        > Agit comme un expert pédagogique. À partir du texte suivant, génère un QCM de [X] questions au format CSV avec le délimiteur '|'.
-        > Colonnes : `Question|A|B|C|D|E|F|Réponse|Explication`
-        
-        **2. Pour Questions / Réponses (Flashcards) :**
-        > Format CSV : `Question|Réponse` (Délimiteur '|')
-        
-        **3. Pour Glossaire (Définitions) :**
-        > Format CSV : `Concept|Définition` (Délimiteur '|')
-        """)
+    st.info("Étape 1 : Téléchargez votre PDF. Étape 2 : Choisissez le type d'exercice. Étape 3 : Utilisez le prompt généré avec votre IA préférée.")
 
     uploaded_pdf = st.file_uploader("Glissez votre PDF ici", type="pdf")
     if uploaded_pdf:
@@ -552,11 +541,45 @@ def page_pdf_transformer():
         if "Erreur" in pdf_text:
             st.error(pdf_text)
         else:
-            st.success("Texte extrait avec succès !")
-            st.text_area("Texte extrait", pdf_text, height=300)
-            if st.button("✨ Envoyer vers le Créateur"):
-                st.session_state.pdf_extracted_text = pdf_text
-                st.success("Texte prêt pour le Créateur !")
+            st.success("✅ Texte extrait avec succès !")
+            
+            cleaned_text = " ".join(pdf_text.split())[:15000] # Limite pour les prompts
+            
+            st.subheader("⚙️ Configurer l'IA")
+            ex_type = st.radio("Type d'exercice souhaité :", 
+                              ["QCM (Interactif)", "Q&A (Flashcards)", "Synthèse & Définitions"],
+                              horizontal=True)
+            
+            target_lang = st.selectbox("Langue cible :", ["Français", "Arabe", "Anglais"])
+            
+            if ex_type == "QCM (Interactif)":
+                prompt = f"""Agis comme un expert pédagogique. À partir du texte suivant, génère un QCM au format CSV strict avec le délimiteur '|'.
+                Colonnes : Question|A|B|C|D|E|F|Réponse|Explication
+                Langue : {target_lang}.
+                Suffixe de fichier recommandé : _QCM.csv
+                
+                Texte : {cleaned_text}"""
+                suffix = "_QCM.csv"
+            elif ex_type == "Q&A (Flashcards)":
+                prompt = f"""Génère une liste de Questions/Réponses pédagogiques à partir du texte.
+                Format CSV strict (délimiteur |) : Question|Réponse
+                Langue : {target_lang}.
+                Suffixe de fichier recommandé : _QA.csv
+                
+                Texte : {cleaned_text}"""
+                suffix = "_QA.csv"
+            else:
+                prompt = f"""Génère une synthèse pédagogique structurée.
+                Inclus : 1. Points clés, 2. Définitions importantes, 3. Résumé global.
+                Format : Markdown.
+                Langue : {target_lang}.
+                Suffixe de fichier recommandé : _SUM.md
+                
+                Texte : {cleaned_text}"""
+                suffix = "_SUM.md"
+
+            st.text_area(f"📋 Prompt IA pour {ex_type}", prompt, height=250)
+            st.info(f"💡 **Conseil** : Une fois le contenu généré par l'IA, utilisez l'onglet **'Créateur'** pour l'enregistrer avec le nom se terminant par `{suffix}`.")
 
 def page_creator():
     st.header("✍️ Créateur de Contenu (HTML/PDF)")
@@ -1077,46 +1100,90 @@ def page_discover():
             cols = st.columns(2)
             for idx, f in enumerate(files):
                 with cols[idx % 2]:
-                    # Load data for scoring and icons
+                    # File type detection
+                    f_type = "QCM"
+                    if "_QA" in f: f_type = "QA"
+                    elif "_SUM" in f or f.endswith(".md"): f_type = "SUM"
+                    
                     best = "N/A"
                     progress = False
-                    if st.session_state.identity["verified"]:
+                    if f_type == "QCM" and st.session_state.identity["verified"]:
                         best = db_get_best_score(st.session_state.identity["email"], f)
                         p_data = db_load_progress(st.session_state.identity["email"], f)
                         if p_data: progress = True
                     
-                    icons = {"MATH": "📐", "CODE": "💻", "BIO": "🧬", "PHY": "⚛️", "HIST": "📜", "DEFAULT": "📝"}
-                    cat_upper = cat.upper()
-                    icon = icons.get(next((k for k in icons if k in cat_upper), "DEFAULT"))
+                    icons = {"QCM": "⚡", "QA": "❓", "SUM": "📝"}
+                    icon = icons.get(f_type, "📄")
 
                     st.markdown(f"""
                     <div class="module-card">
                         <div class="card-header">
                             <div class="icon-box">{icon}</div>
-                            <p class="module-name">{f.replace('.csv', '')}</p>
+                            <p class="module-name">{f.replace('.csv', '').replace('.md', '')}</p>
                         </div>
                         <div>
-                            <span class="best-score">🏆 Record : {best}</span>
+                            {f'<span class="best-score">🏆 Record : {best}</span>' if f_type == "QCM" else ""}
                             {"<span class='in-progress'>⏳ En cours</span>" if progress else ""}
+                            <span style='color: grey; font-size: 0.8em; display: block;'>Type: {f_type}</span>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    # Action buttons (Streamlit native)
+                    # Action buttons
                     full_path = os.path.join(cat_path, f)
                     with open(full_path, "r", encoding="utf-8") as file_data:
-                        csv_content = file_data.read()
+                        content = file_data.read()
                     
                     ac1, ac2 = st.columns(2)
-                    if ac1.button("🚀 Lancer", key=f"q_{f}_{i}"):
-                        st.session_state.auto_load_csv = csv_content
-                        st.session_state.quiz_mod = f
-                        st.session_state.current_page = "⚡ Quiz Interactif"
-                        st.rerun()
+                    if f_type == "QCM":
+                        if ac1.button("🚀 Lancer", key=f"q_{f}_{i}"):
+                            st.session_state.auto_load_csv = content
+                            st.session_state.quiz_mod = f
+                            st.session_state.current_page = "⚡ Quiz Interactif"
+                            st.rerun()
+                    else:
+                        if ac1.button("👁️ Voir", key=f"v_{f}_{i}"):
+                            st.session_state.view_content = {"name": f, "content": content, "type": f_type}
+                            st.session_state.current_page = "👁️ Visualiseur"
+                            st.rerun()
                     
-                    html_code = generate_html_content(csv_content, f.replace(".csv", ""), use_columns=True)
-                    ac2.download_button("📥 HTML", data=html_code, file_name=f.replace(".csv", ".html"), mime="text/html", key=f"dl_{f}_{i}")
-                    st.write("") # Spacer
+                    # Tooltip for download
+                    if f.endswith('.csv'):
+                        html_code = generate_html_content(content, f.replace(".csv", ""), use_columns=True)
+                        ac2.download_button("📥 HTML", data=html_code, file_name=f.replace(".csv", ".html"), mime="text/html", key=f"dl_{f}_{i}")
+                    else:
+                        ac2.download_button("📥 File", data=content, file_name=f, mime="text/plain", key=f"dl_{f}_{i}")
+                    st.write("") 
+
+def page_visualizer():
+    v = st.session_state.view_content
+    if not v["name"]:
+        st.warning("Aucun contenu à visualiser.")
+        if st.button("Retour à l'Explorateur"):
+            st.session_state.current_page = "🔍 Explorer"
+            st.rerun()
+        return
+
+    col_h1, col_h2 = st.columns([0.8, 0.2])
+    col_h1.header(f"👁️ Visualisation : {v['name']}")
+    if col_h2.button("🔙 Retour", use_container_width=True):
+        st.session_state.current_page = "🔍 Explorer"
+        st.rerun()
+
+    st.divider()
+    
+    if v["type"] == "SUM":
+        st.markdown(v["content"])
+    elif v["type"] == "QA":
+        # Simple parsing for Q&A
+        lines = v["content"].split("\n")
+        for line in lines:
+            if line.strip().startswith("Q:"):
+                st.info(f"**{line.strip()}**")
+            elif line.strip().startswith("R:"):
+                st.write(line.strip().replace("R:", "*Rép :*"))
+    else:
+        st.code(v["content"])
 
 # --- MAIN NAVIGATION ---
 if "current_page" not in st.session_state:
@@ -1124,9 +1191,15 @@ if "current_page" not in st.session_state:
 
 with st.sidebar:
     st.title("🚀 Navigation")
-    # Using index to handle redirects
-    pages = ["📄 PDF Transformer", "✍️ Créateur", "🔍 Explorer", "⚡ Quiz Interactif", "📊 Historique"]
-    choice = st.selectbox("Aller vers :", pages, index=pages.index(st.session_state.current_page))
+    pages = ["📄 PDF Transformer", "✍️ Créateur", "🔍 Explorer", "⚡ Quiz Interactif", "📊 Historique", "👁️ Visualiseur"]
+    # Hide Visualizer from direct selectbox if not active
+    nav_pages = [p for p in pages if p != "👁️ Visualiseur" or st.session_state.current_page == "👁️ Visualiseur"]
+    
+    idx = 0
+    if st.session_state.current_page in nav_pages:
+        idx = nav_pages.index(st.session_state.current_page)
+        
+    choice = st.selectbox("Aller vers :", nav_pages, index=idx)
     st.session_state.current_page = choice
 
 if st.session_state.current_page == "📄 PDF Transformer": page_pdf_transformer()
@@ -1134,3 +1207,4 @@ elif st.session_state.current_page == "✍️ Créateur": page_creator()
 elif st.session_state.current_page == "🔍 Explorer": page_discover()
 elif st.session_state.current_page == "⚡ Quiz Interactif": page_quiz()
 elif st.session_state.current_page == "📊 Historique": page_history()
+elif st.session_state.current_page == "👁️ Visualiseur": page_visualizer()
