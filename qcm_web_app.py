@@ -13,6 +13,7 @@ from datetime import timedelta
 
 # --- ADVANCED LIBS ---
 import PyPDF2
+import sqlite3
 
 def extract_text_from_pdf(file_bytes):
     """Extraie le texte d'un fichier PDF uploader."""
@@ -95,6 +96,48 @@ if 'verification_code' not in st.session_state:
     st.session_state.verification_code = None
 if 'confirm_exit' not in st.session_state:
     st.session_state.confirm_exit = False
+
+# --- DATABASE LOGIC ---
+DB_NAME = "qcm_master.db"
+
+def init_db():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    # Table Utilisateurs
+    c.execute('''CREATE TABLE IF NOT EXISTS users 
+                 (email TEXT PRIMARY KEY, nom TEXT, prenom TEXT, user_id TEXT)''')
+    # Table Historique des scores
+    c.execute('''CREATE TABLE IF NOT EXISTS history 
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                  email TEXT, course TEXT, score INTEGER, total INTEGER, date TEXT)''')
+    conn.commit()
+    conn.close()
+
+def db_save_user(email, nom, prenom, user_id):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO users (email, nom, prenom, user_id) VALUES (?, ?, ?, ?)", 
+              (email, nom, prenom, user_id))
+    conn.commit()
+    conn.close()
+
+def db_save_score(email, course, score, total):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    c.execute("INSERT INTO history (email, course, score, total, date) VALUES (?, ?, ?, ?, ?)", 
+              (email, course, score, total, date_str))
+    conn.commit()
+    conn.close()
+
+def db_get_history(email):
+    conn = sqlite3.connect(DB_NAME)
+    df = pd.read_sql_query("SELECT date as Date, course as Examen, CAST(score AS TEXT) || ' / ' || CAST(total AS TEXT) as Score FROM history WHERE email = ? ORDER BY id DESC", conn, params=(email,))
+    conn.close()
+    return df
+
+# Initialize DB on load
+init_db()
 
 # --- FONCTIONS UTILES ---
 def convert_html_to_pdf(source_html):
@@ -766,6 +809,10 @@ def page_quiz():
                     for i, q_data in enumerate(questions):
                         if st.session_state.user_answers.get(i, "") == q_data['ans']:
                             score += 1
+                    
+                    if st.session_state.identity["verified"]:
+                        db_save_score(st.session_state.identity["email"], "Quiz Interactif", score, num_q)
+                    
                     st.session_state.history.append({
                         "Date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
                         "Examen": "Quiz Interactif",
@@ -834,6 +881,8 @@ def page_history():
             if code == "1234":
                 st.session_state.identity["email"] = email
                 st.session_state.identity["verified"] = True
+                # Persist to DB
+                db_save_user(email, st.session_state.identity["nom"], st.session_state.identity["prenom"], st.session_state.identity["id"])
                 st.success("Connecté !")
                 st.rerun()
             else:
@@ -844,12 +893,16 @@ def page_history():
             st.session_state.identity["verified"] = False
             st.rerun()
             
-        st.subheader("📈 Mes derniers scores")
-        if not st.session_state.history:
+        st.subheader("👤 Mon Profil")
+        st.write(f"Nom : **{st.session_state.identity['nom']}**")
+        st.write(f"Prénom : **{st.session_state.identity['prenom']}**")
+        
+        st.subheader("📈 Mes derniers scores (Base de Données)")
+        df_db = db_get_history(st.session_state.identity["email"])
+        if df_db.empty:
             st.info("Aucun historique pour le moment.")
         else:
-            df = pd.DataFrame(st.session_state.history)
-            st.table(df)
+            st.table(df_db)
 
 # --- MAIN NAVIGATION ---
 with st.sidebar:
