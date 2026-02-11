@@ -376,9 +376,8 @@ def db_save_module(name, category, m_type, content):
                       (name, category, m_type, content, date_str))
         conn.commit()
 
-@st.cache_data(ttl=600)
 def db_get_modules(m_type=None, search="", limit=None, offset=0):
-    """Récupère les modules avec options de pagination. Caché pour 10 min."""
+    """Récupère les modules avec options de pagination."""
     search = validate_input(search, max_length=100)
     
     with db_context() as conn:
@@ -1761,6 +1760,57 @@ def page_visualizer():
 def page_admin_crud():
     st.header("⚙️ Gestion Administrative (CRUD)")
     st.info("Gérez ici tous les contenus stockés dans la base de données SQLite.")
+    
+    # System utilities section
+    with st.expander("🛠️ Utilitaires Système"):
+        col_util1, col_util2, col_util3 = st.columns(3)
+        
+        with col_util1:
+            st.subheader("🧹 LocalStorage")
+            if st.button("🗑️ Vider LocalStorage", help="Supprime toutes les données en cache du navigateur"):
+                st.components.v1.html("""
+                <script>
+                localStorage.clear();
+                sessionStorage.clear();
+                alert('LocalStorage et SessionStorage vidés !');
+                </script>
+                """, height=0)
+                st.success("LocalStorage vidé !")
+        
+        with col_util2:
+            st.subheader("🔄 Base de Données")
+            if st.button("🧹 Supprimer Doublons", help="Supprime les modules en double"):
+                with db_context() as conn:
+                    c = conn.cursor()
+                    # Find and remove duplicates, keeping the latest one
+                    c.execute("""
+                        DELETE FROM educational_modules 
+                        WHERE id NOT IN (
+                            SELECT MAX(id) 
+                            FROM educational_modules 
+                            GROUP BY name, type, category
+                        )
+                    """)
+                    deleted = c.rowcount
+                    conn.commit()
+                st.success(f"✅ {deleted} doublon(s) supprimé(s)")
+        
+        with col_util3:
+            st.subheader("📊 Statistiques")
+            with db_context() as conn:
+                c = conn.cursor()
+                c.execute("SELECT COUNT(*) FROM educational_modules")
+                total_modules = c.fetchone()[0]
+                c.execute("SELECT COUNT(DISTINCT email) FROM users")
+                total_users = c.fetchone()[0]
+                c.execute("SELECT COUNT(*) FROM history")
+                total_attempts = c.fetchone()[0]
+            
+            st.metric("Modules totaux", total_modules)
+            st.metric("Utilisateurs", total_users)
+            st.metric("Tentatives quiz", total_attempts)
+    
+    st.divider()
     
     # Bulk export option
     col_search, col_export = st.columns([3, 1])
