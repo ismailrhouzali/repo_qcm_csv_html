@@ -546,7 +546,7 @@ def page_quiz():
     st.header("⚡ Mode Quiz Flash Interactif")
     inject_persistence_js()
     
-    if not st.session_state.quiz_started:
+    if not st.session_state.quiz_started and not st.session_state.score_submitted:
         csv_quiz = st.text_area("Source CSV du Quiz", height=150, key="csv_source_input")
         
         st.subheader("👤 Candidat")
@@ -565,64 +565,161 @@ def page_quiz():
                 st.session_state.start_time = time.time()
                 st.session_state.user_answers = {}
                 st.session_state.shuffled_questions = parse_csv(csv_quiz)
+                st.session_state.current_q_idx = 0
+                st.session_state.validated_current = False
+                st.session_state.score_submitted = False
                 st.rerun()
-    else:
+    elif st.session_state.quiz_started:
         questions = st.session_state.shuffled_questions
+        num_q = len(questions)
         idx = st.session_state.current_q_idx
         q = questions[idx]
         
-        st.progress((idx + 1) / len(questions))
-        st.subheader(f"Question {idx+1} / {len(questions)}")
-        st.write(f"### {q['text']}")
+        st.progress((idx + 1) / num_q)
+        st.subheader(f"Question {idx+1} / {num_q}")
         
-        ans = st.radio("Choisissez :", q['opts'] + ["Auncune réponse (NULL)"], key=f"q_{idx}")
+        st.markdown(f"""
+            <div style="padding: 25px; background: white; border-left: 10px solid #2c3e50; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 30px;">
+                <h2 style="color: #2c3e50; margin-top: 0;">{q['text']}</h2>
+            </div>
+        """, unsafe_allow_html=True)
         
-        c1, c2, c3 = st.columns(3)
-        if idx > 0 and c1.button("⬅️ Précédent"):
-            st.session_state.current_q_idx -= 1
-            st.rerun()
+        letters = ['A', 'B', 'C', 'D', 'E', 'F'][:len(q['opts'])]
+        selected = []
         
-        if idx < len(questions) - 1:
-            if c3.button("Suivant ➡️"):
-                st.session_state.current_q_idx += 1
+        if not st.session_state.validated_current:
+            is_multi = len(q['ans']) > 1
+            if is_multi:
+                st.caption("*(Plusieurs réponses possibles)*")
+                for i, l in enumerate(letters):
+                    prev_val = l in st.session_state.user_answers.get(idx, "")
+                    if st.checkbox(f"{l}. {q['opts'][i]}", key=f"q{idx}_{l}", value=prev_val):
+                        selected.append(l)
+            else:
+                prev_idx = None
+                current_ans = st.session_state.user_answers.get(idx, "")
+                if current_ans:
+                    try: prev_idx = letters.index(current_ans)
+                    except: pass
+                
+                choice = st.radio(f"Selection Q{idx+1}", 
+                                 [f"{l}. {q['opts'][i]}" for i, l in enumerate(letters)],
+                                 index=prev_idx, key=f"q{idx}", label_visibility="collapsed")
+                if choice: selected = [choice[0]]
+            
+            st.session_state.user_answers[idx] = "".join(sorted(selected))
+        else:
+            # RENDER COLORED FEEDBACK (STATIC HTML)
+            u_ans = st.session_state.user_answers.get(idx, "")
+            options_html = '<div style="margin: 15px 0;">'
+            for i, l in enumerate(letters):
+                is_correct = l in q['ans']
+                is_chosen = l in u_ans
+                
+                bg_color = "transparent"
+                border_color = "#ddd"
+                icon = ""
+                text_color = "#333"
+                
+                if is_chosen:
+                    if is_correct:
+                        bg_color = "#d4edda"
+                        border_color = "#28a745"
+                        icon = "✅ "
+                    else:
+                        bg_color = "#f8d7da"
+                        border_color = "#dc3545"
+                        icon = "❌ "
+                elif is_correct:
+                    border_color = "#28a745" 
+                    bg_color = "#f0fff4"
+                
+                options_html += f'<div style="padding: 12px; margin-bottom: 10px; border: 1px solid {border_color}; border-radius: 10px; background-color: {bg_color}; color: {text_color}; font-size: 11pt;"><strong>{l}.</strong> {q["opts"][i]} <span style="float: right;">{icon}</span></div>'
+            options_html += "</div>"
+            st.markdown(options_html, unsafe_allow_html=True)
+        
+        st.markdown('---')
+        
+        if not st.session_state.validated_current:
+            if st.button("✔️ VALIDER POUR VOIR LA RÉPONSE", type="primary", use_container_width=True):
+                st.session_state.validated_current = True
                 st.rerun()
         else:
-            if c3.button("🏁 TERMINER"):
-                # --- SUBMISSION LOGIC ---
-                score = 0
-                questions = st.session_state.shuffled_questions
-                user_ans = st.session_state.user_answers
-                
-                # Mapping user selection to A, B, C
-                mapping = {opt: chr(65+i) for i, opt in enumerate(q['opts'])} # A=65
-                # Wait, mapping needs to be consistent with parse_csv
-                
-                for i, q_data in enumerate(questions):
-                    choice = user_ans.get(i, "")
-                    if choice == q_data['ans']:
-                        score += 1
-                
-                # Record in history
-                st.session_state.history.append({
-                    "Date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "Examen": "Quiz Rapide",
-                    "Email": st.session_state.identity["email"] if st.session_state.identity["verified"] else "Anonyme",
-                    "Score": f"{score} / {len(questions)}"
-                })
-                
-                st.session_state.quiz_started = False
-                st.session_state.last_score = (score, len(questions))
-                st.success(f"Terminé ! Score : {score} / {len(questions)}")
-                
-                if score / len(questions) >= 0.8:
-                    st.balloons()
-                    st.success("🏆 Félicitations ! Vous avez obtenu un certificat.")
-                    pdf_diploma = generate_diploma(f"{st.session_state.identity['prenom']} {st.session_state.identity['nom']}", score, len(questions), "Examen NLP")
-                    if pdf_diploma:
-                        st.download_button("📥 TÉLÉCHARGER MON DIPLÔME", pdf_diploma, "diplome_reussite.pdf")
-                
-                rep_html = generate_result_report(questions, user_ans, score, "Résultats", st.session_state.identity)
-                st.components.v1.html(rep_html, height=800, scrolling=True)
+            # SHOW FEEDBACK
+            u_ans = st.session_state.user_answers.get(idx, "") or "NULL"
+            if u_ans == q['ans']:
+                st.success(f"✅ Correct ! La réponse était : {q['ans']}")
+            else:
+                st.error(f"❌ Incorrect. Votre réponse : {u_ans} | Bonne réponse : {q['ans']}")
+            
+            st.info(f"💡 **Explication** : {q['expl']}")
+            
+            if idx < num_q - 1:
+                if st.button("➡️ QUESTION SUIVANTE", type="primary", use_container_width=True):
+                    st.session_state.current_q_idx += 1
+                    st.session_state.validated_current = False
+                    st.rerun()
+            else:
+                if st.button("🏁 TERMINER L'EXAMEN", type="primary", use_container_width=True):
+                    st.session_state.quiz_started = False
+                    st.session_state.score_submitted = True
+                    # Record in history
+                    score = 0
+                    for i, q_data in enumerate(questions):
+                        if st.session_state.user_answers.get(i, "") == q_data['ans']:
+                            score += 1
+                    st.session_state.history.append({
+                        "Date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "Examen": "Quiz Interactif",
+                        "Email": st.session_state.identity["email"] if st.session_state.identity["verified"] else "Anonyme",
+                        "Score": f"{score} / {num_q}"
+                    })
+                    st.rerun()
+
+    if st.session_state.score_submitted:
+        questions = st.session_state.shuffled_questions
+        num_q = len(questions)
+        score = 0
+        for idx, q in enumerate(questions):
+            if st.session_state.user_answers.get(idx, "") == q['ans']:
+                score += 1
+        
+        st.balloons()
+        st.markdown(f"""
+            <div style="text-align:center; padding:30px; background:#f0f7f4; border-radius:15px; border:2px solid #27ae60; margin-bottom: 20px;">
+                <h1 style="color:#27ae60; margin:0;">SCORE FINAL : {score} / {num_q}</h1>
+                <p style="font-size:16pt;">Candidat : <strong>{st.session_state.identity['prenom']} {st.session_state.identity['nom']}</strong></p>
+                <p style="font-size:14pt;">Taux de réussite : <strong>{(score/num_q*100):.1f}%</strong></p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        if score / num_q >= 0.8:
+            st.success("🏆 Félicitations ! Vous avez obtenu un certificat.")
+            pdf_diploma = generate_diploma(f"{st.session_state.identity['prenom']} {st.session_state.identity['nom']}", score, num_q, "Examen NLP")
+            if pdf_diploma:
+                st.download_button("📥 TÉLÉCHARGER MON DIPLÔME", pdf_diploma, "diplome_reussite.pdf")
+
+        result_html = generate_result_report(questions, st.session_state.user_answers, score, "Examen Officiel", 
+                                             identity=st.session_state.identity, 
+                                             cheat_warnings=st.session_state.cheat_warnings)
+        result_pdf = convert_html_to_pdf(result_html)
+        if result_pdf:
+            st.download_button("📄 TÉLÉCHARGER MON COMPTE-RENDU (PDF)", result_pdf, f"resultats_{st.session_state.identity['nom']}.pdf", mime="application/pdf", use_container_width=True)
+        
+        if st.button("🔄 REFAIRE UN QUIZ"):
+            st.session_state.score_submitted = False
+            st.session_state.quiz_started = False
+            st.session_state.user_answers = {}
+            st.rerun()
+
+        st.subheader("📝 Correction détaillée")
+        for idx, q in enumerate(questions):
+            u_ans = st.session_state.user_answers.get(idx, "") or "NULL"
+            if u_ans == q['ans']:
+                st.success(f"**Q{idx+1}**: Correct ! Votre réponse : {u_ans}")
+            else:
+                st.error(f"**Q{idx+1}**: Incorrect. Votre réponse : {u_ans} | Correcte : {q['ans']}")
+                st.info(f"💡 **Explication** : {q['expl']}")
 
 def page_history():
     st.header("📊 Mon Historique & Compte")
