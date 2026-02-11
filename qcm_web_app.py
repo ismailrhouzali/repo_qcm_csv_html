@@ -809,44 +809,213 @@ def generate_def_html(content, title):
 </body></html>"""
 
 def generate_sum_html(content, title):
-    """Génère un HTML propre pour les synthèses/résumés Markdown."""
-    # Simple markdown-to-html conversion for key patterns
+    """Génère un HTML professionnel pour les synthèses/résumés Markdown - style QCM."""
     import re
+    
     html_body = content
-    # Headers
-    html_body = re.sub(r'^### (.+)$', r'<h3>\1</h3>', html_body, flags=re.MULTILINE)
-    html_body = re.sub(r'^## (.+)$', r'<h2>\1</h2>', html_body, flags=re.MULTILINE)
-    html_body = re.sub(r'^# (.+)$', r'<h1 class="sub">\1</h1>', html_body, flags=re.MULTILINE)
+    
+    # Markdown to HTML conversion
+    # Headers (h1 -> h2 for sections, h2 -> h3 for subsections)
+    html_body = re.sub(r'^### (.+)$', r'<h4>\1</h4>', html_body, flags=re.MULTILINE)
+    html_body = re.sub(r'^## (.+)$', r'<h3>\1</h3>', html_body, flags=re.MULTILINE)
+    html_body = re.sub(r'^# (.+)$', r'<h2>\1</h2>', html_body, flags=re.MULTILINE)
+    
     # Bold / Italic
     html_body = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', html_body)
     html_body = re.sub(r'\*(.+?)\*', r'<em>\1</em>', html_body)
-    # Lists
+    
+    # Code blocks (triple backticks)
+    html_body = re.sub(r'```(.+?)```', r'<pre><code>\1</code></pre>', html_body, flags=re.DOTALL)
+    
+    # Inline code
+    html_body = re.sub(r'`(.+?)`', r'<code>\1</code>', html_body)
+    
+    # Lists (unordered)
     html_body = re.sub(r'^- (.+)$', r'<li>\1</li>', html_body, flags=re.MULTILINE)
+    # Wrap consecutive list items
     html_body = re.sub(r'(<li>.*?</li>\n?)+', r'<ul>\g<0></ul>', html_body)
-    # Paragraphs
-    html_body = re.sub(r'\n\n', '</p><p>', html_body)
+    
+    # Numbered lists
+    html_body = re.sub(r'^\d+\. (.+)$', r'<li>\1</li>', html_body, flags=re.MULTILINE)
+    
+    # Blockquotes
+    html_body = re.sub(r'^> (.+)$', r'<blockquote>\1</blockquote>', html_body, flags=re.MULTILINE)
+    
+    # Paragraphs (double newlines)
+    html_body = html_body.replace('\n\n', '</p><p>')
     html_body = f'<p>{html_body}</p>'
+    
+    # Clean up empty paragraphs
+    html_body = re.sub(r'<p>\s*</p>', '', html_body)
     
     return f"""<!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8"><title>{title}</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{title}</title>
 <style>
-    body {{ font-family: 'Georgia', serif; max-width: 800px; margin: auto; padding: 40px; color: #1e293b; background: #fffbeb; line-height: 1.8; }}
-    h1.main-title {{ text-align: center; color: #92400e; border-bottom: 3px solid #f59e0b; padding-bottom: 12px; font-size: 1.8em; }}
-    h1.sub, h2, h3 {{ color: #92400e; margin-top: 24px; }}
-    h2 {{ border-left: 4px solid #f59e0b; padding-left: 12px; }}
-    ul {{ padding-left: 20px; }}
-    li {{ margin-bottom: 6px; }}
-    strong {{ color: #b45309; }}
-    blockquote {{ border-left: 4px solid #fbbf24; padding: 12px 16px; background: #fef3c7; border-radius: 4px; margin: 16px 0; }}
-    @media print {{ body {{ background: white; padding: 20px; }} }}
+    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    @page {{ size: A4; margin: 1.5cm; }}
+    
+    body {{ 
+        font-family: 'Georgia', 'Times New Roman', serif; 
+        font-size: 11pt; 
+        line-height: 1.7; 
+        color: #1a1a1a; 
+        background: white;
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 40px;
+    }}
+    
+    /* Header styling - same as QCM */
+    h1 {{ 
+        text-align: center; 
+        color: #1e3a8a; 
+        font-size: 1.8em; 
+        margin-bottom: 8px;
+        font-weight: 700;
+        border-bottom: 3px solid #3b82f6;
+        padding-bottom: 12px;
+    }}
+    
+    h2 {{
+        color: #1e40af;
+        font-size: 1.4em;
+        margin-top: 32px;
+        margin-bottom: 16px;
+        border-left: 5px solid #3b82f6;
+        padding-left: 16px;
+        font-weight: 600;
+    }}
+    
+    h3 {{
+        color: #1e40af;
+        font-size: 1.15em;
+        margin-top: 24px;
+        margin-bottom: 12px;
+        font-weight: 600;
+    }}
+    
+    h4 {{
+        color: #475569;
+        font-size: 1.05em;
+        margin-top: 16px;
+        margin-bottom: 8px;
+        font-weight: 600;
+    }}
+    
+    p {{ 
+        margin-bottom: 14px; 
+        text-align: justify;
+        orphans: 3;
+        widows: 3;
+    }}
+    
+    /* Lists */
+    ul, ol {{ 
+        margin: 12px 0 12px 24px; 
+        line-height: 1.8;
+    }}
+    
+    li {{ 
+        margin-bottom: 8px; 
+    }}
+    
+    /* Text formatting */
+    strong {{ 
+        color: #1e40af;
+        font-weight: 700;
+    }}
+    
+    em {{ 
+        color: #374151;
+        font-style: italic;
+    }}
+    
+    /* Code blocks */
+    code {{
+        background: #f1f5f9;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-family: 'Courier New', monospace;
+        font-size: 0.95em;
+        color: #dc2626;
+    }}
+    
+    pre {{
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-left: 4px solid #3b82f6;
+        border-radius: 4px;
+        padding: 16px;
+        margin: 16px 0;
+        overflow-x: auto;
+    }}
+    
+    pre code {{
+        background: none;
+        padding: 0;
+        color: #1e293b;
+        font-size: 10pt;
+    }}
+    
+    /* Blockquotes */
+    blockquote {{
+        border-left: 4px solid #fbbf24;
+        background: #fffbeb;
+        padding: 12px 16px;
+        margin: 16px 0;
+        border-radius: 4px;
+        font-style: italic;
+        color: #92400e;
+    }}
+    
+    /* Print styles */
+    @media print {{
+        body {{ 
+            padding: 0; 
+            background: white;
+            max-width: 100%;
+        }}
+        
+        h1, h2, h3 {{ 
+            page-break-after: avoid; 
+        }}
+        
+        p, li {{ 
+            page-break-inside: avoid; 
+        }}
+        
+        pre {{
+            page-break-inside: avoid;
+        }}
+    }}
+    
+    /* Screen styles */
+    @media screen {{
+        body {{
+            background: #f8fafc;
+            padding: 40px 20px;
+        }}
+        
+        .content-wrapper {{
+            background: white;
+            padding: 40px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border-radius: 8px;
+        }}
+    }}
 </style>
 </head>
 <body>
-    <h1 class="main-title">📝 {title}</h1>
+<div class="content-wrapper">
+    <h1>📝 {title}</h1>
     {html_body}
-</body></html>"""
+</div>
+</body>
+</html>"""
 
 def generate_export_html(content, title, m_type, **kwargs):
     """Dispatche vers le bon template HTML selon le type de contenu."""
