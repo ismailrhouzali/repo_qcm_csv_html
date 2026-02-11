@@ -114,6 +114,11 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS history 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                   email TEXT, course TEXT, score INTEGER, total INTEGER, date TEXT)''')
+    # Table Progression Quiz (En cours)
+    c.execute('''CREATE TABLE IF NOT EXISTS quiz_progress 
+                 (email TEXT, module_name TEXT, current_idx INTEGER, 
+                  answers_json TEXT, last_updated TEXT,
+                  PRIMARY KEY (email, module_name))''')
     conn.commit()
     conn.close()
 
@@ -143,6 +148,35 @@ def db_get_best_score(email, course):
     if res and res[0] is not None:
         return f"{res[0]} / {res[1]}"
     return "N/A"
+
+import json
+
+def db_save_progress(email, module_name, current_idx, answers):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    ans_json = json.dumps(answers)
+    date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    c.execute("INSERT OR REPLACE INTO quiz_progress (email, module_name, current_idx, answers_json, last_updated) VALUES (?, ?, ?, ?, ?)",
+              (email, module_name, current_idx, ans_json, date_str))
+    conn.commit()
+    conn.close()
+
+def db_load_progress(email, module_name):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT current_idx, answers_json FROM quiz_progress WHERE email = ? AND module_name = ?", (email, module_name))
+    res = c.fetchone()
+    conn.close()
+    if res:
+        return {"idx": res[0], "answers": json.loads(res[1])}
+    return None
+
+def db_clear_progress(email, module_name):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("DELETE FROM quiz_progress WHERE email = ? AND module_name = ?", (email, module_name))
+    conn.commit()
+    conn.close()
 
 def db_get_history(email):
     conn = sqlite3.connect(DB_NAME)
@@ -613,13 +647,34 @@ def page_quiz():
     st.header("⚡ Mode Quiz Flash Interactif")
     inject_persistence_js()
     
-    # Handle pre-loaded module from Explorer
+    # Handle pre-loaded module from Explorer or Resume logic
     if "auto_load_csv" in st.session_state and st.session_state.auto_load_csv:
         st.session_state.csv_source_input = st.session_state.auto_load_csv
-        st.session_state.auto_load_csv = None # Reset
-        st.info("📦 Module chargé depuis l'Explorateur.")
+        st.session_state.auto_load_csv = None
+        st.info(f"📦 Module '{st.session_state.get('quiz_mod')}' chargé.")
 
     if not st.session_state.quiz_started and not st.session_state.score_submitted:
+        # Resume Check
+        mod_name = st.session_state.get("quiz_mod")
+        if st.session_state.identity["verified"] and mod_name and mod_name != "Choisir...":
+            progress = db_load_progress(st.session_state.identity["email"], mod_name)
+            if progress:
+                st.success(f"⏳ Progression trouvée : Question {progress['idx']+1}.")
+                c1, c2 = st.columns(2)
+                if c1.button("▶ REPRENDRE", type="primary"):
+                    st.session_state.quiz_started = True
+                    st.session_state.current_course_name = mod_name
+                    st.session_state.shuffled_questions = parse_csv(st.session_state.csv_source_input)
+                    st.session_state.current_q_idx = progress['idx']
+                    st.session_state.user_answers = {int(k): v for k, v in progress['answers'].items()}
+                    st.session_state.validated_current = False
+                    st.session_state.start_time = time.time()
+                    st.rerun()
+                if c2.button("🔄 RECOMMENCER"):
+                    db_clear_progress(st.session_state.identity["email"], mod_name)
+                    st.info("Progression réinitialisée.")
+                    st.rerun()
+
         # --- MODULE LOADING Logic ---
         st.subheader("📁 Charger un module")
         MODULES_DIR = "modules"
@@ -808,6 +863,9 @@ def page_quiz():
             
             if st.button("✔️ VALIDER POUR VOIR LA RÉPONSE", type="primary", use_container_width=True, disabled=is_disabled):
                 st.session_state.validated_current = True
+                # SAVE PROGRESS TO DB
+                if st.session_state.identity["verified"] and st.session_state.current_course_name != "Quiz Manuel":
+                    db_save_progress(st.session_state.identity["email"], st.session_state.current_course_name, idx, st.session_state.user_answers)
                 st.rerun()
         else:
             # SHOW FEEDBACK
@@ -836,6 +894,7 @@ def page_quiz():
                     
                     if st.session_state.identity["verified"]:
                         db_save_score(st.session_state.identity["email"], st.session_state.current_course_name, score, num_q)
+                        db_clear_progress(st.session_state.identity["email"], st.session_state.current_course_name)
                     
                     st.session_state.history.append({
                         "Date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -929,8 +988,67 @@ def page_history():
             st.table(df_db)
 
 def page_discover():
+    st.markdown("""
+    <style>
+    .module-card {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        border: 1px solid #eee;
+        transition: transform 0.2s, box-shadow 0.2s;
+        margin-bottom: 20px;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+    .module-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 15px rgba(0,0,0,0.1);
+    }
+    .card-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 12px;
+        gap: 10px;
+    }
+    .icon-box {
+        background: #f0f4f8;
+        padding: 8px;
+        border-radius: 8px;
+        font-size: 1.5em;
+    }
+    .module-name {
+        font-weight: bold;
+        font-size: 1.1em;
+        color: #2c3e50;
+        margin: 0;
+    }
+    .best-score {
+        background: #fff8e1;
+        color: #f57c00;
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 0.85em;
+        font-weight: bold;
+        display: inline-block;
+        margin-top: 5px;
+    }
+    .in-progress {
+        background: #e3f2fd;
+        color: #1976d2;
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 0.85em;
+        font-weight: bold;
+        display: inline-block;
+        margin-top: 5px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     st.header("🔍 Explorateur de Modules")
-    st.write("Retrouvez ici tous les QCM créés, téléchargez les versions HTML ou lancez un quiz directement.")
     
     MODULES_DIR = "modules"
     if not os.path.exists(MODULES_DIR):
@@ -943,39 +1061,62 @@ def page_discover():
         st.info("Aucun module trouvé.")
         return
 
-    for cat in categories:
-        st.subheader(f"📂 {cat}")
-        cat_path = os.path.join(MODULES_DIR, cat)
-        files = [f for f in os.listdir(cat_path) if f.endswith('.csv')]
-        
-        if not files:
-            st.write("*Vide*")
-            continue
+    # Use tabs for categories
+    tabs = st.tabs([f"📂 {cat}" for cat in categories])
+    
+    for i, cat in enumerate(categories):
+        with tabs[i]:
+            cat_path = os.path.join(MODULES_DIR, cat)
+            files = [f for f in os.listdir(cat_path) if f.endswith('.csv')]
             
-        for f in files:
-            with st.container():
-                c1, c2, c3, c4 = st.columns([0.4, 0.2, 0.2, 0.2])
-                c1.write(f"📄 **{f}**")
-                
-                # Best score from DB
-                best = db_get_best_score(st.session_state.identity["email"], f) if st.session_state.identity["verified"] else "Connectez-vous"
-                c2.write(f"🏆 Best: `{best}`")
-                
-                # Actions
-                full_path = os.path.join(cat_path, f)
-                with open(full_path, "r", encoding="utf-8") as file_data:
-                    csv_content = file_data.read()
-                
-                if c3.button("🚀 Quiz", key=f"launch_{f}"):
-                    st.session_state.auto_load_csv = csv_content
-                    st.session_state.quiz_mod = f
-                    st.session_state.current_page = "⚡ Quiz Interactif"
-                    st.rerun()
+            if not files:
+                st.info("Dossier vide.")
+                continue
+            
+            # Grid layout for cards
+            cols = st.columns(2)
+            for idx, f in enumerate(files):
+                with cols[idx % 2]:
+                    # Load data for scoring and icons
+                    best = "N/A"
+                    progress = False
+                    if st.session_state.identity["verified"]:
+                        best = db_get_best_score(st.session_state.identity["email"], f)
+                        p_data = db_load_progress(st.session_state.identity["email"], f)
+                        if p_data: progress = True
+                    
+                    icons = {"MATH": "📐", "CODE": "💻", "BIO": "🧬", "PHY": "⚛️", "HIST": "📜", "DEFAULT": "📝"}
+                    cat_upper = cat.upper()
+                    icon = icons.get(next((k for k in icons if k in cat_upper), "DEFAULT"))
 
-                # HTML Download
-                html_code = generate_html_content(csv_content, f.replace(".csv", ""), use_columns=True)
-                c4.download_button("📥 HTML", data=html_code, file_name=f.replace(".csv", ".html"), mime="text/html", key=f"dl_{f}")
-            st.divider()
+                    st.markdown(f"""
+                    <div class="module-card">
+                        <div class="card-header">
+                            <div class="icon-box">{icon}</div>
+                            <p class="module-name">{f.replace('.csv', '')}</p>
+                        </div>
+                        <div>
+                            <span class="best-score">🏆 Record : {best}</span>
+                            {"<span class='in-progress'>⏳ En cours</span>" if progress else ""}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Action buttons (Streamlit native)
+                    full_path = os.path.join(cat_path, f)
+                    with open(full_path, "r", encoding="utf-8") as file_data:
+                        csv_content = file_data.read()
+                    
+                    ac1, ac2 = st.columns(2)
+                    if ac1.button("🚀 Lancer", key=f"q_{f}_{i}"):
+                        st.session_state.auto_load_csv = csv_content
+                        st.session_state.quiz_mod = f
+                        st.session_state.current_page = "⚡ Quiz Interactif"
+                        st.rerun()
+                    
+                    html_code = generate_html_content(csv_content, f.replace(".csv", ""), use_columns=True)
+                    ac2.download_button("📥 HTML", data=html_code, file_name=f.replace(".csv", ".html"), mime="text/html", key=f"dl_{f}_{i}")
+                    st.write("") # Spacer
 
 # --- MAIN NAVIGATION ---
 if "current_page" not in st.session_state:
