@@ -63,6 +63,10 @@ def validate_csv_data(csv_text, q_type):
         elif q_type in ["Questions / Réponses", "Glossaire (Concept | Définition)"]:
             if len(row) < 2:
                 errors.append(f"Ligne {i} : Format attendu 'A|B', trouvé seulement {len(row)} colonnes.")
+        
+        elif q_type == "Synthèse (Markdown)":
+            # Pas de validation CSV pour le Markdown
+            pass
     
     return errors, warnings
 
@@ -603,8 +607,8 @@ def page_creator():
         
         st.divider()
         doc_title = st.text_input("Titre", "Examen NLP")
-        out_name = st.text_input("Nom fichier", "qcm_output")
-        q_type = st.radio("Type", ["QCM Classique", "Questions / Réponses", "Glossaire (Concept | Définition)"])
+        out_name = st.text_input("Nom fichier", "output_module")
+        q_type = st.radio("Type", ["QCM Classique", "Questions / Réponses", "Glossaire (Concept | Définition)", "Synthèse (Markdown)"])
         html_mode = st.radio("Style", ["Examen", "Révision"])
         c1, c2 = st.columns(2)
         shuffle_q = c1.checkbox("Mélanger Q", value=False)
@@ -629,9 +633,10 @@ def page_creator():
             save_name = st.text_input("Nom fichier", value=out_name)
             if st.button("💾 Enregistrer"):
                 os.makedirs(os.path.join(MOD_DIR, sel_cat), exist_ok=True)
-                with open(os.path.join(MOD_DIR, sel_cat, f"{save_name}.csv"), "w", encoding="utf-8") as f:
+                ext = ".md" if q_type == "Synthèse (Markdown)" else ".csv"
+                with open(os.path.join(MOD_DIR, sel_cat, f"{save_name}{ext}"), "w", encoding="utf-8") as f:
                     f.write(csv_in)
-                st.success("Enregistré !")
+                st.success(f"Enregistré sous {save_name}{ext} !")
 
         # --- STATS ---
         try:
@@ -1098,6 +1103,9 @@ def page_discover():
             
             # Grid layout for cards
             cols = st.columns(2)
+            # DÉTECTION DES FICHIERS CSV UNIQUEMENT POUR DISCOVER (QCM/QA)
+            files = [f for f in os.listdir(cat_path) if f.endswith('.csv')]
+            
             for idx, f in enumerate(files):
                 with cols[idx % 2]:
                     # File type detection
@@ -1184,13 +1192,56 @@ def page_visualizer():
     else:
         st.code(v["content"])
 
+def page_summaries():
+    st.header("📚 Bibliothèque de Résumés")
+    st.info("Retrouvez ici toutes vos synthèses et cours au format Markdown.")
+
+    MODULES_DIR = "modules"
+    if not os.path.exists(MODULES_DIR):
+        st.info("Aucun dossier de modules trouvé.")
+        return
+
+    categories = [d for d in os.listdir(MODULES_DIR) if os.path.isdir(os.path.join(MODULES_DIR, d))]
+    if not categories:
+        st.info("Aucune catégorie trouvée.")
+        return
+
+    tabs = st.tabs([f"📂 {cat}" for cat in categories])
+    
+    for i, cat in enumerate(categories):
+        with tabs[i]:
+            cat_path = os.path.join(MODULES_DIR, cat)
+            # On cherche les fichiers .md ou contenant _SUM
+            files = [f for f in os.listdir(cat_path) if f.endswith('.md') or "_SUM" in f]
+            
+            if not files:
+                st.info("Aucun résumé dans cette catégorie.")
+                continue
+
+            for f in files:
+                with st.expander(f"📖 {f.replace('_SUM', '').replace('.md', '')}"):
+                    full_path = os.path.join(cat_path, f)
+                    with open(full_path, "r", encoding="utf-8") as file_data:
+                        content = file_data.read()
+                    
+                    st.markdown(content)
+                    
+                    c1, c2 = st.columns(2)
+                    pdf_bytes = convert_html_to_pdf(f"<html><body>{content}</body></html>")
+                    if pdf_bytes:
+                        c1.download_button("📄 Télécharger PDF", pdf_bytes, f.replace(".md", ".pdf"), key=f"dl_pdf_{f}")
+                    if c2.button("👁️ Visualiseur", key=f"vis_{f}"):
+                        st.session_state.view_content = {"name": f, "content": content, "type": "SUM"}
+                        st.session_state.current_page = "👁️ Visualiseur"
+                        st.rerun()
+
 # --- MAIN NAVIGATION ---
 if "current_page" not in st.session_state:
     st.session_state.current_page = "📄 PDF Transformer"
 
 with st.sidebar:
     st.title("🚀 Navigation")
-    pages = ["📄 PDF Transformer", "✍️ Créateur", "🔍 Explorer", "⚡ Quiz Interactif", "📊 Historique", "👁️ Visualiseur"]
+    pages = ["📄 PDF Transformer", "✍️ Créateur", "🔍 Explorer", "📚 Résumés", "⚡ Quiz Interactif", "📊 Historique", "👁️ Visualiseur"]
     # Hide Visualizer from direct selectbox if not active
     nav_pages = [p for p in pages if p != "👁️ Visualiseur" or st.session_state.current_page == "👁️ Visualiseur"]
     
@@ -1204,6 +1255,7 @@ with st.sidebar:
 if st.session_state.current_page == "📄 PDF Transformer": page_pdf_transformer()
 elif st.session_state.current_page == "✍️ Créateur": page_creator()
 elif st.session_state.current_page == "🔍 Explorer": page_discover()
+elif st.session_state.current_page == "📚 Résumés": page_summaries()
 elif st.session_state.current_page == "⚡ Quiz Interactif": page_quiz()
 elif st.session_state.current_page == "📊 Historique": page_history()
 elif st.session_state.current_page == "👁️ Visualiseur": page_visualizer()
