@@ -210,9 +210,17 @@ st.markdown("""
         border: 1px solid #e0e0e0;
     }
     
-    /* Typography */
-    h1, h2, h3 { font-family: 'Georgia', serif; color: #1a1a1a; }
-    .stMarkdown p { font-size: 1.1rem; line-height: 1.6; color: #2c3e50; }
+    /* Typography - Professional Georgia Serif */
+    h1, h2, h3, h4, h5 { font-family: 'Georgia', serif; color: #1a1a1a; }
+    .stMarkdown p, .stMarkdown li, .stCheckbox [data-testid="stMarkdownContainer"] p { 
+        font-family: 'Georgia', serif; 
+        font-size: 1.1rem; 
+        line-height: 1.6; 
+        color: #1a1a1a; 
+    }
+    
+    /* Global Info/Success/Warning font */
+    div[data-testid="stNotification"] p { font-family: 'Georgia', serif; }
     
     /* Condense Widgets for Zero-Scroll */
     [data-testid="stCheckbox"] { margin-bottom: -14px; }
@@ -1322,13 +1330,15 @@ def generate_result_report(questions, user_answers, score, title, identity=None,
         opts_html += "</ul>"
 
         rows += f"""
-        <div style="margin-bottom: 25px; border-left: 5px solid {color}; padding-left: 15px; page-break-inside: avoid;">
-            <p style="font-weight:bold; font-size:11pt; margin-bottom:5px;">Q{idx+1}. {q['text']} {is_correct}</p>
+        <div style="margin-bottom: 30px; border-left: 6px solid {color}; padding: 15px 20px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.02); border-radius: 0 8px 8px 0; page-break-inside: avoid;">
+            <p style="font-family: 'Georgia', serif; font-weight:bold; font-size:12pt; margin-bottom:10px; color:#1a1a1a;">Q{idx+1}. {q['text']} {is_correct}</p>
             {opts_html}
-            <p style="font-size: 10pt; margin: 5px 0;"><strong>Votre sélection :</strong> {u_ans_letters if u_ans_letters else "NULL"}</p>
-            <p style="font-size: 9pt; color: #555; background: #f9f9f9; padding: 8px; border-radius: 4px; margin-top: 5px;">
-                💡 <em>Explication : {q['expl']}</em>
-            </p>
+            <div style="margin-top: 15px; border-top: 1px dashed #eee; padding-top: 10px;">
+                <p style="font-family: 'Georgia', serif; font-size: 10.5pt; margin: 5px 0;"><strong>Votre sélection :</strong> <span style="color:{color}; font-weight:bold;">{u_ans_letters if u_ans_letters else "AUCUNE"}</span></p>
+                <div style="font-family: 'Georgia', serif; font-size: 10pt; color: #444; background: #fdfdfd; padding: 12px; border: 1px solid #f0f0f0; border-radius: 6px; margin-top: 8px; line-height: 1.5;">
+                    💡 <strong>Explication :</strong> <span style="font-style: italic;">{q['expl']}</span>
+                </div>
+            </div>
         </div>
         """
     
@@ -1340,15 +1350,17 @@ def generate_result_report(questions, user_answers, score, title, identity=None,
     .header-box {{ background: #f8f9fa; padding: 15px; border: 1px solid #ddd; margin-bottom: 30px; border-radius: 8px; }}
     .score-box {{ background: #eef9f0; border: 2px solid #27ae60; padding: 20px; text-align: center; font-size: 18pt; margin-bottom: 30px; border-radius: 8px; }}
 </style></head><body>
-    <h1>Rapport d'Examen : {title}</h1>
-    <div class="header-box">
-        <p><strong>Candidat :</strong> {name}{user_id}</p>
-        <p><strong>Date de passage :</strong> {now}</p>
-        {warnings_html}
+    <div style="max-width: 900px; margin: auto;">
+        <h1>Rapport d'Examen : {title}</h1>
+        <div class="header-box">
+            <p><strong>Candidat :</strong> {name}{user_id}</p>
+            <p><strong>Date de passage :</strong> {now}</p>
+            {warnings_html}
+        </div>
+        <div class="score-box">Score Final : <strong>{score} / {len(questions)}</strong> ({(score/len(questions)*100):.1f}%)</div>
+        <hr style="border: 0; border-top: 2px solid #eee; margin-bottom: 40px;">
+        {rows}
     </div>
-    <div class="score-box">Score Global : <strong>{score} / {len(questions)}</strong> ({(score/len(questions)*100):.1f}%)</div>
-    <hr style="border: 0; border-top: 1px solid #eee; margin-bottom: 30px;">
-    {rows}
 </body></html>"""
     return html
 
