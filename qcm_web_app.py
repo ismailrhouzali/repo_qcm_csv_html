@@ -1377,8 +1377,10 @@ def page_creator():
                 st.rerun()
         
         st.divider()
-        doc_title = st.text_input("Titre", "Examen NLP")
-        out_name = st.text_input("Nom fichier", "output_module")
+        module_title = st.text_input("Titre du Module", value=st.session_state.get('editing_name', "Nouveau Module"))
+        # out_name and doc_title are now the same
+        out_name = module_title
+        doc_title = module_title
         q_type = st.radio("Type", ["QCM Classique", "Questions / Réponses", "Glossaire (Concept | Définition)", "Synthèse (Markdown)"],
                           index=["QCM Classique", "Questions / Réponses", "Glossaire (Concept | Définition)", "Synthèse (Markdown)"].index(st.session_state.get('editing_type', "QCM Classique")))
         html_mode = st.radio("Style", ["Examen", "Révision"])
@@ -1389,9 +1391,7 @@ def page_creator():
         add_qr = st.checkbox("QR Code", value=True)
         add_sheet = st.checkbox("Feuille Réponses", value=True)
 
-    # Utiliser l'editing_name si on vient de l'édition CRUD
-    if st.session_state.get('editing_name'):
-        out_name = st.session_state.editing_name
+    # The title is handled by module_title above
 
     default_val = st.session_state.get("csv_source_input", "")
     if not default_val:
@@ -1406,8 +1406,9 @@ def page_creator():
             for e in errors: st.error(e)
             
         with st.expander("💾 Sauvegarder dans la Base de Données", expanded=True):
-            save_name = st.text_input("Nom unique du module", value=out_name)
-            save_cat = st.selectbox("Catégorie / Dossier", ["Matière A", "Matière B", "Général"], index=0)
+            save_name = st.text_input("Nom unique du module", value=module_title)
+            save_cat = "Général"
+            st.info("📂 Catégorie : Général")
             
             if st.button("🚀 ENREGISTRER DANS LA BD", type="primary"):
                 m_type = "QCM"
