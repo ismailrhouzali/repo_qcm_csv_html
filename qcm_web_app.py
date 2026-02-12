@@ -1377,6 +1377,23 @@ def page_creator():
     with st.sidebar:
         st.subheader("⚙️ Configuration")
         module_title = st.text_input("Titre du Module", value=st.session_state.get('editing_name', "Nouveau Module"))
+        
+        # Manual Save Button
+        if st.button("💾 Enregistrer dans la base", use_container_width=True, type="primary"):
+            if module_title and module_title != "Nouveau Module" and st.session_state.get("csv_source_input"):
+                try:
+                    m_type_db = "QCM"
+                    if "Questions" in st.session_state.get('editing_type', ''): m_type_db = "QA"
+                    elif "Glossaire" in st.session_state.get('editing_type', ''): m_type_db = "DEF"
+                    elif "Synthèse" in st.session_state.get('editing_type', ''): m_type_db = "SUM"
+                    
+                    db_save_module(module_title, "Général", m_type_db, st.session_state.csv_source_input)
+                    st.toast(f"✅ Module enregistré : {module_title}", icon="💾")
+                except Exception as e:
+                    st.error(f"Erreur lors de l'enregistrement : {e}")
+                    logger.error(f"Erreur save manuelle: {e}")
+            else:
+                st.warning("Veuillez saisir un titre et du contenu avant d'enregistrer.")
         # out_name and doc_title are now the same
         out_name = module_title
         doc_title = module_title
@@ -1404,24 +1421,7 @@ def page_creator():
     
     if csv_in and module_title and module_title != "Nouveau Module":
         errors, _ = validate_csv_data(csv_in, q_type)
-        if not errors:
-            # --- AUTO-SAVE LOGIC ---
-            m_type_db = "QCM"
-            if "Questions" in q_type: m_type_db = "QA"
-            elif "Glossaire" in q_type: m_type_db = "DEF"
-            elif "Synthèse" in q_type: m_type_db = "SUM"
-            
-            # Check for changes to avoid redundant saves
-            current_hash = hashlib.md5(f"{module_title}{csv_in}{m_type_db}".encode()).hexdigest()
-            if st.session_state.get("last_auto_save_hash") != current_hash:
-                try:
-                    db_save_module(module_title, "Général", m_type_db, csv_in)
-                    st.session_state.last_auto_save_hash = current_hash
-                    st.toast(f"✅ Auto-sauvegarde : {module_title}", icon="💾")
-                except Exception as e:
-                    logger.error(f"Erreur auto-save: {e}")
-
-        else:
+        if errors:
             for e in errors: st.error(e)
 
         # --- STATS ---
