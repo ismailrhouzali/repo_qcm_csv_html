@@ -191,33 +191,39 @@ def validate_csv_data(csv_text, q_type):
 # Configuration de la page
 st.set_page_config(page_title="QCM Master Pro v4", layout="wide", page_icon="🎯")
 
-# --- CUSTOM CSS: BLANK EXAM THEME ---
+# --- CUSTOM CSS: BLANK EXAM THEME (ROBUST CARD) ---
 st.markdown("""
 <style>
-    /* Compact Layout */
-    .block-container { padding-top: 1rem; padding-bottom: 0rem; }
-    .stDeployButton { display:none; }
+    /* App Background */
+    [data-testid="stAppViewContainer"] { background-color: #f4f6f9; }
     
-    /* Exam Paper Look */
-    .exam-container {
+    /* Professional Header/Nav */
+    header { background-color: transparent !important; }
+    .stDeployButton { display:none; }
+
+    /* Paper Effect: Targets the entire main area */
+    .main .block-container {
         background-color: #ffffff;
-        padding: 2rem;
-        border-radius: 5px;
+        padding: 3rem 5rem !important;
+        border-radius: 2px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+        max-width: 1000px !important;
+        margin: 2rem auto !important;
         border: 1px solid #e0e0e0;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        margin-bottom: 1.5rem;
     }
     
     /* Typography */
     h1, h2, h3 { font-family: 'Georgia', serif; color: #1a1a1a; }
-    .stMarkdown p { font-size: 1.15rem; line-height: 1.6; }
+    .stMarkdown p { font-size: 1.1rem; line-height: 1.6; color: #2c3e50; }
     
-    /* Condense Widgets */
-    [data-testid="stCheckbox"] { margin-bottom: -10px; }
-    .stButton > button { border-radius: 4px; font-weight: 600; }
+    /* Condense Widgets for Zero-Scroll */
+    [data-testid="stCheckbox"] { margin-bottom: -14px; }
+    .stCheckbox [data-testid="stMarkdownContainer"] p { font-size: 1rem !important; }
+    .stButton > button { border-radius: 2px; font-weight: 500; height: auto; padding-top: 5px; padding-bottom: 5px; }
+    .stProgress { margin-bottom: 0.5rem; }
     
-    /* Navbar styling */
-    header { background-color: transparent !important; }
+    /* Compact Sidebar */
+    [data-testid="stSidebar"] { background-color: #ffffff; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1629,7 +1635,6 @@ def page_quiz():
         csv_quiz = st.text_area("Source CSV du Quiz", height=150, value=st.session_state.get("csv_source_input", ""), key="quiz_csv_area")
         
         # --- COMPACT CANDIDATE INFO ---
-        st.markdown('<div class="exam-container">', unsafe_allow_html=True)
         st.subheader("👤 Informations Candidat")
         c1, c2, c3 = st.columns(3)
         st.session_state.identity["nom"] = c1.text_input("Nom", value=st.session_state.identity["nom"], placeholder="Nom")
@@ -1677,7 +1682,6 @@ def page_quiz():
                 st.session_state.validated_current = False
                 st.session_state.score_submitted = False
                 st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
     elif st.session_state.quiz_started:
         questions = st.session_state.shuffled_questions
         num_q = len(questions)
@@ -1685,9 +1689,6 @@ def page_quiz():
         q = questions[idx]
         
         st.progress((idx + 1) / num_q)
-        
-        # --- EXAM CONTAINER ---
-        st.markdown('<div class="exam-container">', unsafe_allow_html=True)
         
         # --- COMPACT HEADER ---
         head_c1, head_c2, head_c3 = st.columns([0.2, 0.6, 0.2])
@@ -1850,8 +1851,6 @@ def page_quiz():
                             db_save_score(st.session_state.identity["email"], st.session_state.current_course_name, total_score, len(questions))
                             db_clear_progress(st.session_state.identity["email"], st.session_state.current_course_name)
                         st.rerun()
-        
-        st.markdown('</div>', unsafe_allow_html=True) # CLOSE EXAM CONTAINER
 
     if st.session_state.score_submitted:
         score = st.session_state.get('final_score', 0)
