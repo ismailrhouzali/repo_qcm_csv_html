@@ -2108,35 +2108,73 @@ def page_guide_ia():
     st.header("💡 Guide Complet : Génération par IA")
     
     st.markdown("""
-    ### 🎨 L'Art du Prompting pour QCM Master Pro
-    Pour obtenir des QCM parfaits, suivez ces principes avec votre IA (ChatGPT, Claude, etc.) :
+    ### 🎨 L'Art du Prompting
+    Pour obtenir des résultats parfaits, utilisez ces modèles de prompts avec votre IA (ChatGPT, Claude, etc.).
     
-    #### 1. Le Format Strict (CSV)
-    L'IA **doit** renvoyer un format délimité par `|` (pipe). 
-    Exemple de ligne attendue :
-    `Quelle est la capitale de la France ?|Paris|Lyon|Marseille|Bordeaux|Lille|Toulouse|A|Paris est la capitale depuis des siècles.`
-
-    #### 2. Configuration recommandée
-    * **Rôle** : Commencez par *"Tu es un expert en pédagogie universitaire."*
-    * **Contrainte** : Ajoutez *"Ne fournis que le code CSV, pas de texte avant ou après."*
-    * **Qualité** : Demandez *"Génère des distracteurs (mauvaises réponses) plausibles et difficiles."*
-    
-    #### 3. Workflow Optimal
-    1. Utilisez l'**Extracteur PDF** (page précédente) pour obtenir le texte de votre cours.
-    2. Copiez le prompt généré automatiquement.
-    3. Donnez-le à l'IA.
-    4. Copiez le résultat de l'IA.
-    5. Allez dans le **Créateur** et collez le texte.
-    6. Enregistrez dans la base de données avec le suffixe `_QCM.csv`.
-
-    #### 4. Suffixes Magiques
-    Le système détecte le type de page selon le nom du fichier :
-    * `_QCM.csv` ➡️ Active les statistiques et les corrigés interactifs.
-    * `_QA.csv` ➡️ Active le mode Question/Réponse simple.
-    * `_SUM.md` ➡️ Affiche un résumé structuré en Markdown.
+    > [!IMPORTANT]
+    > Remplacez **[COLLEZ LE TEXTE ICI]** par le contenu de votre cours dans les modèles ci-dessous.
     """)
+
+    tabs = st.tabs(["⚡ QCM", "❓ Q&A", "📜 Glossaire", "📝 Synthèse"])
     
-    st.success("🎯 Astuce : Utilisez Claude 3.5 Sonnet ou GPT-4o pour les meilleurs résultats en français.")
+    with tabs[0]:
+        st.subheader("Modèle QCM (Interactif)")
+        qcm_prompt = """Tu es un expert en ingénierie pédagogique. À partir du texte fourni, génère un examen QCM de haute qualité.
+
+CONSIGNES STRICTES :
+1. Format : CSV strict (délimiteur '|')
+2. Colonnes : Question|A|B|C|D|E|F|Réponse|Explication
+3. Réponse : Indique la lettre (ex: A) ou les lettres (ex: AC) sans séparateur.
+4. Qualité : Crée des distracteurs plausibles. L'explication doit justifier la bonne réponse.
+5. Langue : Français.
+
+TEXTE DE RÉFÉRENCE :
+[COLLEZ LE TEXTE ICI]"""
+        st.text_area("Copiez ce prompt pour les QCM :", qcm_prompt, height=300, key="guide_qcm")
+
+    with tabs[1]:
+        st.subheader("Modèle Q&A (Flashcards)")
+        qa_prompt = """Tu es un expert en mémorisation active. À partir du texte fourni, génère des questions-réponses percutantes.
+
+CONSIGNES STRICTES :
+1. Format : CSV strict (délimiteur '|')
+2. Colonnes : Question|Réponse
+3. Langue : Français.
+
+TEXTE DE RÉFÉRENCE :
+[COLLEZ LE TEXTE ICI]"""
+        st.text_area("Copiez ce prompt pour les Flashcards :", qa_prompt, height=250, key="guide_qa")
+
+    with tabs[2]:
+        st.subheader("Modèle Glossaire (Concepts)")
+        def_prompt = """Identifie tous les concepts clés, termes techniques et définitions importantes dans le texte suivant.
+
+CONSIGNES STRICTES :
+1. Format : CSV (délimiteur '|')
+2. Colonnes : Concept|Définition
+3. Langue : Français.
+
+TEXTE DE RÉFÉRENCE :
+[COLLEZ LE TEXTE ICI]"""
+        st.text_area("Copiez ce prompt pour le Glossaire :", def_prompt, height=250, key="guide_def")
+
+    with tabs[3]:
+        st.subheader("Modèle Synthèse (Markdown)")
+        sum_prompt = """Rédige une synthèse structurée et pédagogique du texte suivant. 
+Utilise du Markdown pour la mise en forme (titres, listes, gras).
+
+CONSIGNES :
+1. Style : Clair, concis et professionnel.
+2. Langue : Français.
+3. Format : Résumé structuré.
+
+TEXTE DE RÉFÉRENCE :
+[COLLEZ LE TEXTE ICI]"""
+        st.text_area("Copiez ce prompt pour la Synthèse :", sum_prompt, height=250, key="guide_sum")
+
+    st.divider()
+    st.info("🎯 Astuce : Utilisez Claude 3.5 Sonnet ou GPT-4o pour les meilleurs résultats.")
+
 
 def page_favorites():
     st.header("⭐ Mes Questions Favorites")
