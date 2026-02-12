@@ -223,6 +223,10 @@ def init_db():
         c.execute('''CREATE TABLE IF NOT EXISTS quiz_progress 
                      (email TEXT, module_name TEXT, current_idx INTEGER, answers TEXT, last_updated TEXT, 
                       PRIMARY KEY(email, module_name))''')
+        # Table des favoris
+        c.execute('''CREATE TABLE IF NOT EXISTS favorites 
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, module_name TEXT, question_text TEXT, 
+                      options TEXT, answer TEXT, explanation TEXT, created_at TEXT)''')
         conn.commit()
 
 def validate_input(text, max_length=10000, allow_html=False):
@@ -366,6 +370,56 @@ def db_export_all_user_data(email):
         progress = pd.read_sql_query("SELECT * FROM quiz_progress WHERE email = ?", conn, params=(email,)).to_dict('records')
     return {"history": history, "progress": progress}
 
+def db_toggle_favorite(email, module_name, q_text, opts, ans, expl):
+    """Ajoute ou supprime une question des favoris."""
+    email = email.lower()
+    opts_json = json.dumps(opts)
+    with db_context() as conn:
+        c = conn.cursor()
+        # Vérifier si elle existe déjà
+        c.execute("SELECT id FROM favorites WHERE email = ? AND question_text = ?", (email, q_text))
+        res = c.fetchone()
+        if res:
+            c.execute("DELETE FROM favorites WHERE id = ?", (res[0],))
+            status = "removed"
+        else:
+            date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+            c.execute("INSERT INTO favorites (email, module_name, question_text, options, answer, explanation, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                     (email, module_name, q_text, opts_json, ans, expl, date_str))
+            status = "added"
+        conn.commit()
+        return status
+
+def db_get_favorites(email):
+    """Récupère tous les favoris d'un utilisateur."""
+    email = email.lower()
+    with db_context() as conn:
+        c = conn.cursor()
+        c.execute("SELECT module_name, question_text, options, answer, explanation FROM favorites WHERE email = ? ORDER BY created_at DESC", (email,))
+        rows = c.fetchall()
+        favs = []
+        for r in rows:
+            favs.append({
+                "module": r[0],
+                "text": r[1],
+                "opts": json.loads(r[2]),
+                "ans": r[3],
+                "expl": r[4]
+            })
+        return favs
+
+def db_export_to_excel():
+    """Génère un fichier Excel contenant toute la base de données."""
+    output = io.BytesIO()
+    with db_context() as conn:
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            pd.read_sql_query("SELECT * FROM users", conn).to_excel(writer, sheet_name='Utilisateurs', index=False)
+            pd.read_sql_query("SELECT * FROM educational_modules", conn).to_excel(writer, sheet_name='Modules', index=False)
+            pd.read_sql_query("SELECT * FROM history", conn).to_excel(writer, sheet_name='Historique', index=False)
+            pd.read_sql_query("SELECT * FROM quiz_progress", conn).to_excel(writer, sheet_name='Progressions', index=False)
+            pd.read_sql_query("SELECT * FROM favorites", conn).to_excel(writer, sheet_name='Favoris', index=False)
+    return output.getvalue()
+
 def get_user_recommendations(email, limit=3):
     """Recommandations simples."""
     all_qcms = db_get_modules(m_type="QCM")
@@ -457,6 +511,114 @@ def generate_answer_sheet(num_questions):
         </div>
         <p style="font-size:8pt; text-align:center; margin-top:10px;">Cochez la case correspondante à votre réponse.</p>
     </div>"""
+
+def generate_certificate_html(user_name, course_name, score, total):
+    """Génère un HTML élégant pour le certificat de réussite."""
+    from datetime import datetime
+    date_str = datetime.now().strftime("%d %B %Y")
+    percentage = round((score / total) * 100)
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Pinyon+Script&family=Montserrat:wght@400;700&display=swap');
+            body {{
+                background-color: #f0f0f0;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                margin: 0;
+            }}
+            .certificate {{
+                background-color: white;
+                padding: 50px;
+                width: 800px;
+                height: 550px;
+                border: 15px solid #d4af37;
+                position: relative;
+                box-shadow: 0 0 20px rgba(0,0,0,0.2);
+                text-align: center;
+                font-family: 'Montserrat', sans-serif;
+            }}
+            .certificate:before {{
+                content: '';
+                position: absolute;
+                top: 10px; left: 10px; right: 10px; bottom: 10px;
+                border: 2px solid #d4af37;
+            }}
+            .header {{
+                font-size: 50px;
+                color: #d4af37;
+                font-family: 'Pinyon Script', cursive;
+                margin-bottom: 20px;
+            }}
+            .sub-header {{
+                font-size: 18px;
+                text-transform: uppercase;
+                letter-spacing: 5px;
+                margin-bottom: 40px;
+            }}
+            .user-name {{
+                font-size: 40px;
+                border-bottom: 2px solid #333;
+                display: inline-block;
+                padding: 0 50px;
+                margin-bottom: 20px;
+            }}
+            .course-name {{
+                font-size: 24px;
+                font-weight: bold;
+                color: #2c3e50;
+                margin: 20px 0;
+            }}
+            .score {{
+                font-size: 20px;
+                margin-bottom: 40px;
+            }}
+            .footer {{
+                display: flex;
+                justify-content: space-between;
+                margin-top: 50px;
+                padding: 0 50px;
+                font-size: 14px;
+            }}
+            .signature {{
+                border-top: 1px solid #333;
+                width: 200px;
+                padding-top: 5px;
+            }}
+            .medal {{
+                position: absolute;
+                bottom: 30px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: 80px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="certificate">
+            <div class="header">Certificat de Réussite</div>
+            <div class="sub-header">PROJET QCM MASTER PRO</div>
+            <p>Ce certificat est fièrement décerné à</p>
+            <div class="user_name">{user_name}</div>
+            <p>pour avoir complété avec succès l'examen</p>
+            <div class="course-name">{course_name}</div>
+            <div class="score">Score obtenu : <strong>{score} / {total}</strong> ({percentage}%)</div>
+            <div class="footer">
+                <div>Délivré le : {date_str}</div>
+                <div class="signature">La Direction QCM Master</div>
+            </div>
+            <img src="https://cdn-icons-png.flaticon.com/512/179/179249.png" class="medal" alt="Médaille">
+        </div>
+    </body>
+    </html>
+    """
+    return html
 
 def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Examen", shuffle_q=False, shuffle_o=False, q_type="QCM Classique", add_sheet=True):
     col_css = "column-count: 3; -webkit-column-count: 3; -moz-column-count: 3; column-gap: 30px;" if use_columns else ""
@@ -1086,26 +1248,40 @@ def page_pdf_transformer():
             
             CONSIGNES STRICTES :
             1. Format : CSV strict (délimiteur '|')
-            2. Colonnes : Terme|Définition
+            2. Colonnes : Concept|Définition
             3. Langue : {target_lang}.
             
             TEXTE DE RÉFÉRENCE :
             {cleaned_text}"""
             suffix = "_DEF.csv"
             
-        else: # Synthèse
-            prompt = f"""Rédige une synthèse structurée et pédagogique du texte suivant.
+        elif ex_type == "Synthèse":
+            prompt = f"""Rédige une synthèse structurée et pédagogique du texte suivant. 
+            Utilise du Markdown pour la mise en forme (titres, listes, gras).
             
-            CONSIGNES STRICTES :
-            1. Format : Markdown (utilisant des titres #, ## et des listes -)
-            2. Contenu : Points clés, mécanismes principaux et résumé global.
-            3. Langue : {target_lang}.
+            CONSIGNES :
+            1. Style : Clair, concis et professionnel.
+            2. Langue : {target_lang}.
+            3. Format : Résumé structuré.
             
             TEXTE DE RÉFÉRENCE :
             {cleaned_text}"""
             suffix = "_SUM.md"
-
-        st.text_area(f"📋 Prompt IA pour {ex_type}", prompt, height=250)
+        
+        st.subheader("🤖 Votre Prompt IA")
+        st.write(f"Copiez ce prompt et collez-le dans votre IA (ChatGPT, Claude, etc.) pour générer votre module `{suffix}`.")
+        
+        # Guide interactif rapide
+        with st.expander("❓ Comment utiliser ce prompt ?"):
+            st.markdown(f"""
+            1. **Copiez** le texte ci-dessous.
+            2. **Allez** sur [ChatGPT](https://chat.openai.com) ou [Claude.ai](https://claude.ai).
+            3. **Collez** et envoyez.
+            4. **Copiez** le résultat de l'IA (en ignorant le texte superflu).
+            5. **Allez** dans l'onglet **'✍️ Créateur'** pour enregistrer votre module avec le suffixe `{suffix}`.
+            """)
+            
+        st.text_area("📋 Prompt à copier :", prompt, height=300)
         
         with st.expander("🎓 Guide : Comment obtenir les meilleurs résultats avec l'IA ?", expanded=True):
             st.markdown(f"""
@@ -1114,8 +1290,7 @@ def page_pdf_transformer():
             2. **Colle-le** dans ton IA préférée (ChatGPT, Claude, Gemini, Mistral).
             3. **Vérifie** que l'IA respecte bien le format `Question|A|B|C|D|E|F|Réponse|Explication`.
             4. **Copie le résultat CSV** généré par l'IA.
-            5. **Va dans l'onglet '✍️ Créateur'** et colle le résultat pour générer ton PDF/HTML.
-
+            
             ### 💡 Conseils pour un QCM de qualité :
             * **Température** : Si possible, demande à l'IA d'utiliser une `température de 0.2` pour plus de précision factuelle.
             * **Complexité** : N'hésite pas à ajouter au prompt : *"Génère des questions de niveau expert avec des pièges subtils."*
@@ -1267,23 +1442,25 @@ def page_quiz():
                     st.info("Progression réinitialisée.")
                     st.rerun()
 
-        # --- MODULE LOADING Logic ---
-        st.subheader("📁 Charger un module")
-        MODULES_DIR = "modules"
-        if os.path.exists(MODULES_DIR):
-            categories = [d for d in os.listdir(MODULES_DIR) if os.path.isdir(os.path.join(MODULES_DIR, d))]
-            if categories:
-                cat = st.selectbox("Catégorie", ["Choisir..."] + categories, key="quiz_cat")
-                if cat != "Choisir...":
-                    cat_path = os.path.join(MODULES_DIR, cat)
-                    files = [f for f in os.listdir(cat_path) if f.endswith('.csv')]
-                    if files:
-                        mod_file = st.selectbox("Module", ["Choisir..."] + files, key="quiz_mod")
-                        if mod_file != "Choisir...":
-                            if st.button("📥 Charger ce module"):
-                                with open(os.path.join(cat_path, mod_file), "r", encoding="utf-8") as f:
-                                    st.session_state.csv_source_input = f.read()
-                                st.success(f"Module '{mod_file}' chargé !")
+        # --- MODULE LOADING Logic (SQL Based) ---
+        st.subheader("📂 Charger un module")
+        all_modules = db_get_modules()
+        if all_modules:
+            cat_list = sorted(list(set([m[2] for m in all_modules])))
+            cat = st.selectbox("Catégorie", ["Toutes"] + cat_list, key="quiz_cat")
+            
+            filtered_mods = [m for m in all_modules if cat == "Toutes" or m[2] == cat]
+            mod_options = {f"{m[1]} ({m[3]})": m for m in filtered_mods}
+            
+            sel_mod_name = st.selectbox("Module", ["Choisir..."] + list(mod_options.keys()), key="quiz_mod_sel")
+            
+            if sel_mod_name != "Choisir...":
+                selected_module = mod_options[sel_mod_name]
+                if st.button("📥 Charger ce module"):
+                    st.session_state.csv_source_input = selected_module[4]
+                    st.session_state.quiz_mod = selected_module[1]
+                    st.success(f"Module '{selected_module[1]}' chargé !")
+                    st.rerun()
 
         csv_quiz = st.text_area("Source CSV du Quiz", height=150, value=st.session_state.get("csv_source_input", ""), key="quiz_csv_area")
         
@@ -1469,40 +1646,44 @@ def page_quiz():
             
             st.info(f"💡 **Explication** : {q['expl']}")
             
-            if idx < num_q - 1:
-                if st.button("➡️ QUESTION SUIVANTE", type="primary", use_container_width=True):
-                    st.session_state.current_q_idx += 1
-                    st.session_state.validated_current = False
-                    st.rerun()
-            else:
-                if st.button("🏁 TERMINER L'EXAMEN", type="primary", use_container_width=True):
-                    st.session_state.quiz_started = False
-                    st.session_state.score_submitted = True
-                    # Record in history
-                    score = 0
-                    for i, q_data in enumerate(questions):
-                        if st.session_state.user_answers.get(i, "") == q_data['ans']:
-                            score += 1
-                    
-                    if st.session_state.identity["verified"]:
-                        db_save_score(st.session_state.identity["email"], st.session_state.current_course_name, score, num_q)
-                        db_clear_progress(st.session_state.identity["email"], st.session_state.current_course_name)
-                    
-                    st.session_state.history.append({
-                        "Date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-                        "Examen": st.session_state.current_course_name,
-                        "Email": st.session_state.identity["email"] if st.session_state.identity["verified"] else "Anonyme",
-                        "Score": f"{score} / {num_q}"
-                    })
-                    st.rerun()
+            # --- FAVORITES BUTTON ---
+            email = st.session_state.identity.get("email", "anonyme")
+            c_fav, c_nav = st.columns([1, 2])
+            with c_fav:
+                if st.button("⭐ Favori", use_container_width=True, key=f"fav_click_{idx}"):
+                    new_status = db_toggle_favorite(email, st.session_state.current_course_name, q['text'], q['opts'], q['ans'], q['expl'])
+                    if new_status == "added": st.toast("Ajouté aux favoris !")
+                    else: st.toast("Retiré des favoris.")
+            
+            with c_nav:
+                if idx < num_q - 1:
+                    if st.button("➡️ QUESTION SUIVANTE", type="primary", use_container_width=True):
+                        st.session_state.current_q_idx += 1
+                        st.session_state.validated_current = False
+                        st.rerun()
+                else:
+                    if st.button("🏁 TERMINER L'EXAMEN", type="primary", use_container_width=True):
+                        st.session_state.quiz_started = False
+                        st.session_state.score_submitted = True
+                        
+                        # Recalculate score
+                        score = 0
+                        questions = st.session_state.shuffled_questions
+                        for i, q_data in enumerate(questions):
+                            if st.session_state.user_answers.get(i, "") == q_data['ans']:
+                                score += 1
+                        
+                        st.session_state.final_score = score
+                        st.session_state.final_total = len(questions)
+                        
+                        if st.session_state.identity["verified"]:
+                            db_save_score(st.session_state.identity["email"], st.session_state.current_course_name, score, len(questions))
+                            db_clear_progress(st.session_state.identity["email"], st.session_state.current_course_name)
+                        st.rerun()
 
     if st.session_state.score_submitted:
-        questions = st.session_state.shuffled_questions
-        num_q = len(questions)
-        score = 0
-        for idx, q in enumerate(questions):
-            if st.session_state.user_answers.get(idx, "") == q['ans']:
-                score += 1
+        score = st.session_state.get('final_score', 0)
+        num_q = st.session_state.get('final_total', 1)
         
         st.balloons()
         st.markdown(f"""
@@ -1513,11 +1694,20 @@ def page_quiz():
             </div>
         """, unsafe_allow_html=True)
         
-        if score / num_q >= 0.8:
-            st.success("🏆 Félicitations ! Vous avez obtenu un certificat.")
-            pdf_diploma = generate_diploma(f"{st.session_state.identity['prenom']} {st.session_state.identity['nom']}", score, num_q, "Examen NLP")
-            if pdf_diploma:
-                st.download_button("📥 TÉLÉCHARGER MON DIPLÔME", pdf_diploma, "diplome_reussite.pdf")
+        # --- CERTIFICATE BUTTON ---
+        if (score / num_q) >= 0.8:
+            st.success("🏆 Félicitations ! Vous avez réussi l'examen avec brio.")
+            user_full_name = f"{st.session_state.identity['prenom']} {st.session_state.identity['nom']}"
+            cert_html = generate_certificate_html(user_full_name, st.session_state.current_course_name, score, num_q)
+            cert_pdf = convert_html_to_pdf(cert_html)
+            if cert_pdf:
+                st.download_button(
+                    "🎓 Télécharger mon Diplôme (PDF)",
+                    data=cert_pdf,
+                    file_name=f"Certificat_{st.session_state.current_course_name}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
 
         result_html = generate_result_report(questions, st.session_state.user_answers, score, "Examen Officiel", 
                                              identity=st.session_state.identity, 
@@ -1863,25 +2053,21 @@ def page_admin_crud():
     
     st.divider()
     
-    # Bulk export option
-    col_search, col_export = st.columns([3, 1])
+    # Bulk export options
+    col_search, col_zip, col_excel = st.columns([2, 1, 1])
     with col_search:
         search = st.text_input("🔍 Rechercher dans toute la base...", "")
-    with col_export:
+    with col_zip:
         st.write("")  # Spacing
-        if st.button("📦 Export ZIP complet", use_container_width=True):
+        if st.button("📦 Export ZIP", use_container_width=True):
             with st.spinner("Création du ZIP..."):
                 zip_data = create_bulk_export_zip()
                 if zip_data:
-                    st.download_button(
-                        "⬇️ Télécharger tous les modules",
-                        data=zip_data,
-                        file_name=f"modules_export_{datetime.datetime.now().strftime('%Y%m%d')}.zip",
-                        mime="application/zip",
-                        use_container_width=True
-                    )
-                else:
-                    st.warning("Aucun module à exporter.")
+                    st.download_button("⬇️ ZIP", data=zip_data, file_name=f"modules_{datetime.datetime.now().strftime('%Y%m%d')}.zip", mime="application/zip")
+    with col_excel:
+        st.write("")
+        excel_data = db_export_to_excel()
+        st.download_button("📊 Excel Complet", data=excel_data, file_name=f"BD_Master_{datetime.datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
     
     tabs = st.tabs(["⚡ QCM", "❓ Q&A", "📜 Définitions", "📝 Résumés"])
     types_map = {"⚡ QCM": "QCM", "❓ Q&A": "QA", "📜 Définitions": "DEF", "📝 Résumés": "SUM"}
@@ -1965,13 +2151,35 @@ def page_guide_ia():
     
     st.success("🎯 Astuce : Utilisez Claude 3.5 Sonnet ou GPT-4o pour les meilleurs résultats en français.")
 
+def page_favorites():
+    st.header("⭐ Mes Questions Favorites")
+    st.info("Retrouvez ici les questions que vous avez marquées pour révision.")
+    
+    email = st.session_state.get('user_email', 'anonyme')
+    favs = db_get_favorites(email)
+    
+    if not favs:
+        st.warning("Vous n'avez pas encore de favoris.")
+        return
+    
+    for i, f in enumerate(favs, 1):
+        with st.expander(f"Question {i} - Module: {f['module']}"):
+            st.write(f"**{f['text']}**")
+            for j, opt in enumerate(f['opts'], 1):
+                st.write(f"{chr(64+j)}. {opt}")
+            st.success(f"Réponse : {f['ans']}")
+            st.info(f"Explication : {f['expl']}")
+            if st.button(f"🗑️ Retirer", key=f"del_fav_{i}"):
+                db_toggle_favorite(email, f['module'], f['text'], f['opts'], f['ans'], f['expl'])
+                st.rerun()
+
 # --- MAIN NAVIGATION ---
 if "current_page" not in st.session_state:
     st.session_state.current_page = "📄 PDF Transformer"
 
 with st.sidebar:
     st.title("🚀 Navigation")
-    pages = ["📄 PDF Transformer", "✍️ Créateur", "🔍 Explorer", "📚 Résumés", "⚡ Quiz Interactif", "📊 Historique", "💡 Guide IA", "⚙️ Gestion BD", "👁️ Visualiseur"]
+    pages = ["📄 PDF Transformer", "✍️ Créateur", "🔍 Explorer", "📚 Résumés", "⚡ Quiz Interactif", "⭐ Mes Favoris", "📊 Historique", "💡 Guide IA", "⚙️ Gestion BD", "👁️ Visualiseur"]
     # Hide Visualizer from direct selectbox if not active
     nav_pages = [p for p in pages if p != "👁️ Visualiseur" or st.session_state.current_page == "👁️ Visualiseur"]
     
@@ -1987,6 +2195,7 @@ elif st.session_state.current_page == "✍️ Créateur": page_creator()
 elif st.session_state.current_page == "🔍 Explorer": page_discover()
 elif st.session_state.current_page == "📚 Résumés": page_summaries()
 elif st.session_state.current_page == "⚡ Quiz Interactif": page_quiz()
+elif st.session_state.current_page == "⭐ Mes Favoris": page_favorites()
 elif st.session_state.current_page == "📊 Historique": page_history()
 elif st.session_state.current_page == "💡 Guide IA": page_guide_ia()
 elif st.session_state.current_page == "⚙️ Gestion BD": page_admin_crud()
