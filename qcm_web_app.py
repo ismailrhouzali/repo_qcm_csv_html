@@ -2140,34 +2140,65 @@ def page_admin_crud():
                 st.warning(f"Aucun contenu de type {t_code} trouvé.")
                 continue
 
-            # Display table
-            df = pd.DataFrame(mods, columns=["ID", "Nom", "Catégorie", "Type", "Contenu", "Date"])
-            st.dataframe(df[["Nom", "Catégorie", "Date"]], use_container_width=True)
+            # --- DASHBOARD HEADER ---
+            h1, h2, h3, h4 = st.columns([3, 1.5, 2.5, 3])
+            h1.markdown("**Nom du Module**")
+            h2.markdown("**Date**")
+            h3.markdown("**Formats**")
+            h4.markdown("**Actions**")
+            st.divider()
 
             for m in mods:
                 mid, mname, mcat, mtype, mcont, mdate = m
-                with st.expander(f"⚙️ Action : {mname} ({mcat})"):
-                    c1, c2, c3 = st.columns(3)
-                    if c1.button("✏️ ÉDITER", key=f"edit_{mid}"):
+                r1, r2, r3, r4 = st.columns([3, 1.5, 2.5, 3])
+                
+                # Column 1: Name & Type
+                icons = {"QCM": "⚡", "QA": "❓", "DEF": "📜", "SUM": "📝"}
+                icon = icons.get(mtype, "📄")
+                r1.markdown(f"{icon} **{mname}**")
+                
+                # Column 2: Date
+                r2.write(mdate.split()[0] if mdate else "N/A")
+                
+                # Column 3: Multi-format Downloads
+                with r3:
+                    d1, d2, d3 = st.columns(3)
+                    d1.download_button("💾", mcont, f"{mname}.csv", help="CSV", key=f"am_csv_{mid}")
+                    html_code = generate_export_html(mcont, mname, mtype)
+                    d2.download_button("🌐", html_code, f"{mname}.html", help="HTML", key=f"am_html_{mid}")
+                    pdf_code = convert_html_to_pdf(html_code)
+                    if pdf_code:
+                        d3.download_button("📄", pdf_code, f"{mname}.pdf", help="PDF", key=f"am_pdf_{mid}")
+                    else:
+                        d3.button("❌", disabled=True, help="PDF non généré", key=f"am_pdf_err_{mid}")
+
+                # Column 4: Quick Actions
+                with r4:
+                    a1, a2, a3, a4 = st.columns(4)
+                    if a1.button("✏️", help="Éditer", key=f"ed_{mid}"):
                         st.session_state.csv_source_input = mcont
                         st.session_state.editing_name = mname
                         st.session_state.editing_type = "QCM Classique" if mtype == "QCM" else "Questions / Réponses" if mtype == "QA" else "Glossaire (Concept | Définition)" if mtype == "DEF" else "Synthèse (Markdown)"
                         st.session_state.current_page = "✍️ Créateur"
                         st.rerun()
-                    if c2.button("🗑️ SUPPRIMER", key=f"del_{mid}", type="secondary"):
+                    
+                    if a2.button("🗑️", help="Supprimer", key=f"de_{mid}"):
                         db_delete_module(mid)
                         st.success("Supprimé !")
                         st.rerun()
-                    
-                    # --- Multi-format Exports Admin ---
-                    st.divider()
-                    ad_c1, ad_c2, ad_c3 = st.columns(3)
-                    ad_c1.download_button("📥 CSV", mcont, f"{mname}.csv", key=f"adm_csv_{mid}")
-                    html_code = generate_export_html(mcont, mname, mtype)
-                    ad_c2.download_button("📥 HTML", data=html_code, file_name=f"{mname}.html", key=f"adm_html_{mid}")
-                    pdf_code = convert_html_to_pdf(html_code)
-                    if pdf_code:
-                        ad_c3.download_button("📥 PDF", data=pdf_code, file_name=f"{mname}.pdf", key=f"adm_pdf_{mid}")
+                        
+                    if a3.button("👁️", help="Voir", key=f"vi_{mid}"):
+                        st.session_state.view_content = {"name": mname, "type": mtype, "content": mcont}
+                        st.session_state.current_page = "👁️ Visualiseur"
+                        st.rerun()
+                        
+                    if a4.button("🚀", help="Quiz", key=f"qu_{mid}"):
+                        st.session_state.auto_load_csv = mcont
+                        st.session_state.quiz_mod = mname
+                        st.session_state.current_page = "⚡ Quiz Interactif"
+                        st.rerun()
+                
+                st.divider()
 
 def page_summaries():
     # Ancienne page maintenue pour compatibilité ou simplifiée
