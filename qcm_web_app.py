@@ -198,6 +198,49 @@ if 'auto_load_csv' not in st.session_state:
     st.session_state.auto_load_csv = None
 if 'view_content' not in st.session_state:
     st.session_state.view_content = {"name": "", "content": "", "type": ""}
+if 'current_page' not in st.session_state:
+    st.session_state.current_page = "📄 PDF Transformer"
+
+# --- MAIN NAVIGATION (NAVBAR) ---
+pages_config = {
+    "📄 PDF Transformer": {"icon": "file-earmark-pdf"},
+    "📄 PDF Merger": {"icon": "file-earmark-zip"},
+    "✍️ Créateur": {"icon": "pencil-square"},
+    "🔍 Explorer": {"icon": "search"},
+    "📚 Résumés": {"icon": "book"},
+    "⚡ Quiz Interactif": {"icon": "lightning"},
+    "⭐ Mes Favoris": {"icon": "star"},
+    "📊 Historique": {"icon": "clock-history"},
+    "💡 Guide IA": {"icon": "robot"},
+    "⚙️ Gestion BD": {"icon": "gear"}
+}
+
+# If in visualizer mode, add it temporarily
+current_pages = list(pages_config.keys())
+if st.session_state.get("current_page") == "👁️ Visualiseur":
+    current_pages.append("👁️ Visualiseur")
+
+# Optimized Horizontal Navbar at the top
+selected = option_menu(
+    menu_title=None,
+    options=current_pages,
+    icons=[pages_config.get(p, {"icon": "eye"})["icon"] for p in current_pages],
+    menu_icon="cast",
+    default_index=current_pages.index(st.session_state.current_page) if st.session_state.current_page in current_pages else 0,
+    orientation="horizontal",
+    key="main_navbar", # Stable key for performance
+    styles={
+        "container": {"padding": "0!important", "background-color": "#fafafa"},
+        "icon": {"color": "#27ae60", "font-size": "14px"}, 
+        "nav-link": {"font-size": "12px", "text-align": "left", "margin": "0px", "--hover-color": "#eee"},
+        "nav-link-selected": {"background-color": "#27ae60"},
+    }
+)
+
+# Immediate state sync
+if selected != st.session_state.current_page:
+    st.session_state.current_page = selected
+    st.rerun()
 
 # --- DATABASE LOGIC (SQLite) ---
 DB_NAME = "qcm_master.db"
@@ -2310,46 +2353,6 @@ def page_favorites():
             if st.button(f"🗑️ Retirer", key=f"del_fav_{i}"):
                 db_toggle_favorite(email, f['module'], f['text'], f['opts'], f['ans'], f['expl'])
                 st.rerun()
-
-# --- MAIN NAVIGATION (NAVBAR) ---
-pages_config = {
-    "📄 PDF Transformer": {"icon": "file-earmark-pdf"},
-    "📄 PDF Merger": {"icon": "file-earmark-zip"},
-    "✍️ Créateur": {"icon": "pencil-square"},
-    "🔍 Explorer": {"icon": "search"},
-    "📚 Résumés": {"icon": "book"},
-    "⚡ Quiz Interactif": {"icon": "lightning"},
-    "⭐ Mes Favoris": {"icon": "star"},
-    "📊 Historique": {"icon": "clock-history"},
-    "💡 Guide IA": {"icon": "robot"},
-    "⚙️ Gestion BD": {"icon": "gear"}
-}
-
-# If in visualizer mode, add it temporarily
-current_pages = list(pages_config.keys())
-if st.session_state.get("current_page") == "👁️ Visualiseur":
-    current_pages.append("👁️ Visualiseur")
-
-if "current_page" not in st.session_state:
-    st.session_state.current_page = "📄 PDF Transformer"
-
-# Render Horizontal Navbar
-selected = option_menu(
-    menu_title=None,
-    options=current_pages,
-    icons=[pages_config.get(p, {"icon": "eye"})["icon"] for p in current_pages],
-    menu_icon="cast",
-    default_index=current_pages.index(st.session_state.current_page) if st.session_state.current_page in current_pages else 0,
-    orientation="horizontal",
-    styles={
-        "container": {"padding": "0!important", "background-color": "#fafafa"},
-        "icon": {"color": "#27ae60", "font-size": "14px"}, 
-        "nav-link": {"font-size": "12px", "text-align": "left", "margin": "0px", "--hover-color": "#eee"},
-        "nav-link-selected": {"background-color": "#27ae60"},
-    }
-)
-
-st.session_state.current_page = selected
 
 # --- Execute Page ---
 if st.session_state.current_page == "📄 PDF Transformer": page_pdf_transformer()
