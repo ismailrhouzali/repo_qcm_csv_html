@@ -14,6 +14,7 @@ import logging
 import re
 import sqlite3
 import json
+import shutil
 from contextlib import contextmanager
 
 # --- ADVANCED LIBS ---
