@@ -12,11 +12,8 @@ import datetime
 from datetime import timedelta
 import logging
 import re
+import sqlite3
 from contextlib import contextmanager
-import zipfile
-import json as json_lib
-import json
-import shutil
 
 # --- ADVANCED LIBS ---
 import PyPDF2
@@ -198,29 +195,35 @@ if 'auto_load_csv' not in st.session_state:
 if 'view_content' not in st.session_state:
     st.session_state.view_content = {"name": "", "content": "", "type": ""}
 
-# --- DATABASE LOGIC (Filesystem Based) ---
-# We use files to simulate a database for easier GitHub deployment
-DATA_DIR = "data"
-MODULES_DIR = "modules"
+# --- DATABASE LOGIC (SQLite) ---
+DB_NAME = "qcm_master.db"
+
+@contextmanager
+def db_context():
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 def init_db():
-    """Initialise les dossiers de données."""
-    if not os.path.exists(DATA_DIR):
-        os.makedirs(DATA_DIR)
-    if not os.path.exists(MODULES_DIR):
-        os.makedirs(MODULES_DIR)
-    
-    # Init history file if not exists
-    history_file = os.path.join(DATA_DIR, "history.csv")
-    if not os.path.exists(history_file):
-        with open(history_file, "w", encoding="utf-8") as f:
-            f.write("email,course,score,total,date\n")
-            
-    # Init progress file
-    progress_file = os.path.join(DATA_DIR, "progress.json")
-    if not os.path.exists(progress_file):
-        with open(progress_file, "w", encoding="utf-8") as f:
-            json.dump({}, f)
+    """Initialise les tables SQLite."""
+    with db_context() as conn:
+        c = conn.cursor()
+        # Table des utilisateurs
+        c.execute('''CREATE TABLE IF NOT EXISTS users 
+                     (email TEXT PRIMARY KEY, nom TEXT, prenom TEXT, user_id TEXT)''')
+        # Table de l'historique des scores
+        c.execute('''CREATE TABLE IF NOT EXISTS history 
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, course TEXT, score INTEGER, total INTEGER, date TEXT)''')
+        # Table des modules éducatifs
+        c.execute('''CREATE TABLE IF NOT EXISTS educational_modules 
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, category TEXT, type TEXT, content TEXT, created_at TEXT)''')
+        # Table de progression
+        c.execute('''CREATE TABLE IF NOT EXISTS quiz_progress 
+                     (email TEXT, module_name TEXT, current_idx INTEGER, answers TEXT, last_updated TEXT, 
+                      PRIMARY KEY(email, module_name))''')
+        conn.commit()
 
 def validate_input(text, max_length=10000, allow_html=False):
     """Valide et nettoie les entrées utilisateur."""
@@ -232,190 +235,141 @@ def validate_input(text, max_length=10000, allow_html=False):
     return text.strip()
 
 def db_save_user(email, nom, prenom, user_id):
-    """Sauvegarde un utilisateur dans un fichier JSON."""
+    """Sauvegarde un utilisateur."""
     email = email.lower()
-    users_file = os.path.join(DATA_DIR, "users.json")
-    users = {}
-    if os.path.exists(users_file):
-        try:
-            with open(users_file, "r", encoding="utf-8") as f:
-                users = json.load(f)
-        except: pass
-    
-    users[email] = {"nom": nom, "prenom": prenom, "user_id": user_id}
-    with open(users_file, "w", encoding="utf-8") as f:
-        json.dump(users, f, indent=4)
+    with db_context() as conn:
+        c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO users (email, nom, prenom, user_id) VALUES (?, ?, ?, ?)",
+                 (email, nom, prenom, user_id))
+        conn.commit()
 
 def db_save_score(email, course, score, total):
-    """Sauvegarde un score dans history.csv."""
+    """Sauvegarde un score."""
     email = email.lower()
     date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-    history_file = os.path.join(DATA_DIR, "history.csv")
-    with open(history_file, "a", encoding="utf-8") as f:
-        f.write(f"{email},{course},{score},{total},{date_str}\n")
+    with db_context() as conn:
+        c = conn.cursor()
+        c.execute("INSERT INTO history (email, course, score, total, date) VALUES (?, ?, ?, ?, ?)",
+                 (email, course, score, total, date_str))
+        conn.commit()
 
 def db_get_best_score(email, course):
-    """Récupère le meilleur score depuis history.csv."""
+    """Récupère le meilleur score."""
     email = email.lower()
-    history_file = os.path.join(DATA_DIR, "history.csv")
-    if not os.path.exists(history_file): return "N/A"
-    
-    best = -1
-    total_val = 0
-    try:
-        df = pd.read_csv(history_file)
-        filtered = df[(df['email'] == email) & (df['course'] == course)]
-        if not filtered.empty:
-            max_row = filtered.loc[filtered['score'].idxmax()]
-            return f"{max_row['score']} / {max_row['total']}"
-    except: pass
+    with db_context() as conn:
+        c = conn.cursor()
+        c.execute("SELECT score, total FROM history WHERE email = ? AND course = ? ORDER BY score DESC LIMIT 1",
+                 (email, course))
+        res = c.fetchone()
+        if res:
+            return f"{res[0]} / {res[1]}"
     return "N/A"
 
 def db_save_progress(email, module_name, current_idx, answers):
-    """Sauvegarde la progression dans progress.json."""
+    """Sauvegarde la progression."""
     email = email.lower()
-    progress_file = os.path.join(DATA_DIR, "progress.json")
-    progress = {}
-    if os.path.exists(progress_file):
-        try:
-            with open(progress_file, "r", encoding="utf-8") as f:
-                progress = json.load(f)
-        except: pass
-    
-    key = f"{email}|{module_name}"
-    progress[key] = {
-        "current_idx": current_idx,
-        "answers": answers,
-        "last_updated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-    }
-    with open(progress_file, "w", encoding="utf-8") as f:
-        json.dump(progress, f)
+    ans_json = json.dumps(answers)
+    date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    with db_context() as conn:
+        c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO quiz_progress (email, module_name, current_idx, answers, last_updated) VALUES (?, ?, ?, ?, ?)",
+                 (email, module_name, current_idx, ans_json, date_str))
+        conn.commit()
 
 def db_load_progress(email, module_name):
-    """Charge la progression depuis progress.json."""
+    """Charge la progression."""
     email = email.lower()
-    progress_file = os.path.join(DATA_DIR, "progress.json")
-    if not os.path.exists(progress_file): return None
-    
-    try:
-        with open(progress_file, "r", encoding="utf-8") as f:
-            progress = json.load(f)
-        key = f"{email}|{module_name}"
-        if key in progress:
-            return {"idx": progress[key]["current_idx"], "answers": progress[key]["answers"]}
-    except: pass
+    with db_context() as conn:
+        c = conn.cursor()
+        c.execute("SELECT current_idx, answers FROM quiz_progress WHERE email = ? AND module_name = ?",
+                 (email, module_name))
+        res = c.fetchone()
+        if res:
+            return {"idx": res[0], "answers": json.loads(res[1])}
     return None
 
 def db_clear_progress(email, module_name):
     """Supprime la progression."""
     email = email.lower()
-    progress_file = os.path.join(DATA_DIR, "progress.json")
-    if not os.path.exists(progress_file): return
-    
-    try:
-        with open(progress_file, "r", encoding="utf-8") as f:
-            progress = json.load(f)
-        key = f"{email}|{module_name}"
-        if key in progress:
-            del progress[key]
-            with open(progress_file, "w", encoding="utf-8") as f:
-                json.dump(progress, f)
-    except: pass
+    with db_context() as conn:
+        c = conn.cursor()
+        c.execute("DELETE FROM quiz_progress WHERE email = ? AND module_name = ?", (email, module_name))
+        conn.commit()
 
 def db_save_module(name, category, m_type, content):
-    """Sauvegarde le module comme un fichier CSV dans le dossier modules."""
-    cat_dir = os.path.join(MODULES_DIR, category)
-    if not os.path.exists(cat_dir):
-        os.makedirs(cat_dir)
-    
-    # Nettoyer le nom pour le fichier
-    safe_name = re.sub(r'[^\w\s-]', '', name).strip().replace(' ', '_')
-    filename = f"{safe_name}_{m_type}.csv"
-    filepath = os.path.join(cat_dir, filename)
-    
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(content)
-    logger.info(f"Module sauvé : {filepath}")
+    """Sauvegarde le module dans SQLite."""
+    date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    with db_context() as conn:
+        c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO educational_modules (name, category, type, content, created_at) VALUES (?, ?, ?, ?, ?)",
+                 (name, category, m_type, content, date_str))
+        conn.commit()
 
 def db_get_modules(m_type=None, search="", limit=None, offset=0):
-    """Récupère les modules en scannant le dossier modules."""
-    modules = []
-    if not os.path.exists(MODULES_DIR): return []
+    """Récupère les modules depuis SQL."""
+    query = "SELECT id, name, category, type, content, created_at FROM educational_modules WHERE 1=1"
+    params = []
+    if m_type:
+        query += " AND type = ?"
+        params.append(m_type)
+    if search:
+        query += " AND (name LIKE ? OR category LIKE ?)"
+        params.extend([f"%{search}%", f"%{search}%"])
     
-    for root, dirs, files in os.walk(MODULES_DIR):
-        category = os.path.basename(root)
-        if category == "modules": category = "Général"
+    query += " ORDER BY created_at DESC"
+    if limit:
+        query += " LIMIT ?"
+        params.append(limit)
+    if offset:
+        query += " OFFSET ?"
+        params.append(offset)
         
-        for file in files:
-            if file.endswith(".csv"):
-                # Parse type from filename: Name_TYPE.csv
-                parts = file.rsplit('_', 1)
-                name = parts[0].replace('_', ' ')
-                ext_type = parts[1].replace('.csv', '') if len(parts) > 1 else "QCM"
-                
-                if m_type and ext_type != m_type: continue
-                if search and not (search.lower() in name.lower() or search.lower() in category.lower()):
-                    continue
-                
-                filepath = os.path.join(root, file)
-                try:
-                    with open(filepath, "r", encoding="utf-8") as f:
-                        content = f.read()
-                    mod_time = os.path.getmtime(filepath)
-                    date_str = datetime.datetime.fromtimestamp(mod_time).strftime("%Y-%m-%d %H:%M")
-                    modules.append((file, name, category, ext_type, content, date_str))
-                except: pass
-                
-    # Sort and paginate
-    modules.sort(key=lambda x: x[5], reverse=True)
-    if offset: modules = modules[offset:]
-    if limit: modules = modules[:limit]
-    
-    return modules
+    with db_context() as conn:
+        c = conn.cursor()
+        c.execute(query, params)
+        return c.fetchall()
 
 def db_count_modules(m_type=None, search=""):
-    """Compte les fichiers CSV."""
-    return len(db_get_modules(m_type, search))
+    """Compte les modules."""
+    query = "SELECT COUNT(*) FROM educational_modules WHERE 1=1"
+    params = []
+    if m_type:
+        query += " AND type = ?"
+        params.append(m_type)
+    if search:
+        query += " AND (name LIKE ? OR category LIKE ?)"
+        params.extend([f"%{search}%", f"%{search}%"])
+        
+    with db_context() as conn:
+        c = conn.cursor()
+        c.execute(query, params)
+        return c.fetchone()[0]
 
-def db_delete_module(m_filename):
-    """Supprime le fichier correspondant."""
-    # Attention: ici m_id est le nom du fichier
-    for root, dirs, files in os.walk(MODULES_DIR):
-        if m_filename in files:
-            os.remove(os.path.join(root, m_filename))
-            return
+def db_delete_module(m_id):
+    """Supprime un module."""
+    with db_context() as conn:
+        c = conn.cursor()
+        c.execute("DELETE FROM educational_modules WHERE id = ?", (m_id,))
+        conn.commit()
 
 def db_get_history(email):
-    """Récupère l'historique depuis history.csv."""
-    history_file = os.path.join(DATA_DIR, "history.csv")
-    if not os.path.exists(history_file): return pd.DataFrame()
-    
-    try:
-        df = pd.read_csv(history_file)
-        df_user = df[df['email'] == email.lower()].copy()
-        df_user['Score'] = df_user['score'].astype(str) + " / " + df_user['total'].astype(str)
-        df_user = df_user.rename(columns={"date": "Date", "course": "Examen"})
-        return df_user[["Date", "Examen", "Score"]].sort_index(ascending=False)
-    except:
-        return pd.DataFrame()
+    """Récupère l'historique."""
+    with db_context() as conn:
+        query = "SELECT date as Date, course as Examen, (score || ' / ' || total) as Score FROM history WHERE email = ? ORDER BY date DESC"
+        return pd.read_sql_query(query, conn, params=(email.lower(),))
 
 def db_export_all_user_data(email):
     """Exporte history et progress."""
     email = email.lower()
-    history = []
-    history_file = os.path.join(DATA_DIR, "history.csv")
-    if os.path.exists(history_file):
-        try:
-            df = pd.read_csv(history_file)
-            history = df[df['email'] == email].to_dict('records')
-        except: pass
-    
-    return {"history": history}
+    with db_context() as conn:
+        history = pd.read_sql_query("SELECT * FROM history WHERE email = ?", conn, params=(email,)).to_dict('records')
+        progress = pd.read_sql_query("SELECT * FROM quiz_progress WHERE email = ?", conn, params=(email,)).to_dict('records')
+    return {"history": history, "progress": progress}
 
 def get_user_recommendations(email, limit=3):
-    """Recommandations simples basées sur les fichiers."""
+    """Recommandations simples."""
     all_qcms = db_get_modules(m_type="QCM")
-    return [(m[1], "Disponible", m[2]) for m in all_qcms[:limit]]
+    return [(m[1], "Nouveau module", m[2]) for m in all_qcms[:limit]]
 
 # Initialize DB on load
 init_db()
