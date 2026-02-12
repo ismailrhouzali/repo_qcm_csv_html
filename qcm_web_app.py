@@ -1569,13 +1569,11 @@ def page_quiz():
 
         # --- MODULE LOADING Logic (SQL Based) ---
         st.subheader("📂 Charger un module")
-        all_modules = db_get_modules()
+        # Directement filtrer pour n'afficher que les QCM
+        all_modules = db_get_modules(m_type="QCM")
         if all_modules:
-            cat_list = sorted(list(set([m[2] for m in all_modules])))
-            cat = st.selectbox("Catégorie", ["Toutes"] + cat_list, key="quiz_cat")
-            
-            filtered_mods = [m for m in all_modules if cat == "Toutes" or m[2] == cat]
-            mod_options = {f"{m[1]} ({m[3]})": m for m in filtered_mods}
+            # Plus de catégorie, on affiche directement les modules filtrés
+            mod_options = {f"{m[1]}": m for m in all_modules}
             
             sel_mod_name = st.selectbox("Module", ["Choisir..."] + list(mod_options.keys()), key="quiz_mod_sel")
             
@@ -2264,7 +2262,20 @@ def page_admin_crud():
                     d2.download_button("🌐", html_code, f"{mname}.html", help="HTML", key=f"am_html_{mid}")
                     pdf_code = convert_html_to_pdf(html_code)
                     if pdf_code:
-                        d3.download_button("📄", pdf_code, f"{mname}.pdf", help="PDF", key=f"am_pdf_{mid}")
+                        with d3.popover("⚙️"):
+                            st.write("🔧 PDF Master")
+                            z_val = st.slider("Zoom", 0.5, 2.0, 1.0, 0.1, key=f"am_z_{mid}")
+                            t_p = st.number_input("Pages visées", 1, 10, 0, key=f"am_p_{mid}", help="0 pour auto")
+                            
+                            f_z = z_val
+                            if t_p > 0:
+                                t_q = mcont.count('\n')
+                                e_p = (t_q * 0.05) if mtype == "QCM" else (t_q * 0.08)
+                                if e_p > 0: f_z = min(z_val, (t_p / e_p))
+                            
+                            scaled_pdf = convert_html_to_pdf(html_code, zoom=f_z)
+                            if scaled_pdf:
+                                st.download_button("⬇️ PDF", scaled_pdf, f"{m_name}.pdf", key=f"am_dl_{mid}", use_container_width=True)
                     else:
                         d3.button("❌", disabled=True, help="PDF non généré", key=f"am_pdf_err_{mid}")
 
