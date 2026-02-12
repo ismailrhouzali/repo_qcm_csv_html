@@ -1374,24 +1374,8 @@ def page_pdf_merger():
 def page_creator():
     st.header("✍️ Créateur de Contenu (HTML/PDF)")
     
-    # Sidebar config for this page
-    MOD_DIR = "modules"
-    if not os.path.exists(MOD_DIR): os.makedirs(MOD_DIR)
-    categories = [d for d in os.listdir(MOD_DIR) if os.path.isdir(os.path.join(MOD_DIR, d))] or ["Général"]
-    
     with st.sidebar:
-        st.subheader("📁 Modules")
-        sel_cat = st.selectbox("Catégorie", categories)
-        cat_path = os.path.join(MOD_DIR, sel_cat)
-        mod_files = [f for f in os.listdir(cat_path) if f.endswith(".csv")]
-        if mod_files:
-            sel_mod = st.selectbox("Charger", ["-- Choisir --"] + mod_files)
-            if sel_mod != "-- Choisir --" and st.button("📂 Charger"):
-                with open(os.path.join(cat_path, sel_mod), "r", encoding="utf-8") as f:
-                    st.session_state.csv_source_input = f.read()
-                st.rerun()
-        
-        st.divider()
+        st.subheader("⚙️ Configuration")
         module_title = st.text_input("Titre du Module", value=st.session_state.get('editing_name', "Nouveau Module"))
         # out_name and doc_title are now the same
         out_name = module_title
