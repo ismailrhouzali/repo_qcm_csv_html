@@ -497,9 +497,22 @@ def get_user_recommendations(email, limit=3):
 init_db()
 
 # --- FONCTIONS UTILES ---
-def convert_html_to_pdf(source_html):
-    """Convertit le HTML en PDF bytes via pdfkit. Fallback si binaire non trouvé."""
+def convert_html_to_pdf(source_html, zoom=1.0, options=None):
+    """Convertit le HTML en PDF bytes via pdfkit. Supporte le zoom et les options personnalisées."""
     try:
+        if options is None:
+            options = {
+                'page-size': 'A4',
+                'margin-top': '1.5cm',
+                'margin-right': '1.5cm',
+                'margin-bottom': '1.5cm',
+                'margin-left': '1.5cm',
+                'encoding': "UTF-8",
+                'zoom': str(zoom),
+                'no-outline': None,
+                'quiet': ''
+            }
+        
         # Tentative de trouver wkhtmltopdf
         path_wkhtmltopdf = r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe'
         if not os.path.exists(path_wkhtmltopdf):
@@ -507,10 +520,9 @@ def convert_html_to_pdf(source_html):
         
         if path_wkhtmltopdf:
             config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
-            return pdfkit.from_string(source_html, False, configuration=config)
+            return pdfkit.from_string(source_html, False, configuration=config, options=options)
         else:
-            # Sur Streamlit Cloud, il devrait être dans le PATH via packages.txt
-            return pdfkit.from_string(source_html, False)
+            return pdfkit.from_string(source_html, False, options=options)
     except Exception as e:
         logger.error(f"Erreur PDF : {e}")
         st.warning(f"⚠️ PDF impossible : {e}. Assurez-vous que wkhtmltopdf est installé.")
@@ -2063,7 +2075,25 @@ def page_discover():
                             d_col2.download_button("HTM", html_exp, f"{m_name}.html", key=f"ex_htm_{m_id}", help="HTML")
                             pdf_exp = convert_html_to_pdf(html_exp)
                             if pdf_exp:
-                                d_col3.download_button("PDF", pdf_exp, f"{m_name}.pdf", key=f"ex_pdf_{m_id}", help="PDF")
+                                with d_col3.popover("⚙️"):
+                                    st.write("🔧 PDF Master")
+                                    zoom_val = st.slider("Zoom", 0.5, 2.0, 1.0, 0.1, key=f"zoom_{m_id}")
+                                    target_p = st.number_input("Pages visées", 1, 10, 0, key=f"p_{m_id}", help="0 pour auto")
+                                    
+                                    # Heuristic: if target_p > 0, we adjust zoom
+                                    # (very rough estimate: 1 page ~= 1.0 zoom for typical 20q QCM)
+                                    final_zoom = zoom_val
+                                    if target_p > 0:
+                                        # Assume 1.0 zoom = 2 pages for 50 questions
+                                        # Let's use a dynamic factor
+                                        total_q = m_content.count('\n') # Row count estimate
+                                        est_p = (total_q * 0.05) if m_type == "QCM" else (total_q * 0.08)
+                                        if est_p > 0:
+                                            final_zoom = min(zoom_val, (target_p / est_p))
+                                    
+                                    scaled_pdf = convert_html_to_pdf(html_exp, zoom=final_zoom)
+                                    if scaled_pdf:
+                                        st.download_button("⬇️ Télécharger", scaled_pdf, f"{m_name}.pdf", key=f"dl_pdf_{m_id}", use_container_width=True)
                             else:
                                 d_col3.caption("X")
                         st.write("---")
