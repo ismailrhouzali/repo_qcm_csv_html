@@ -912,7 +912,7 @@ def generate_sum_html(content, title):
     @page {{ size: A4; margin: 1.5cm; }}
     
     body {{ 
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+        font-family: 'Georgia', 'Times New Roman', serif; 
         font-size: 11pt; 
         line-height: 1.6; 
         color: var(--text-color); 
