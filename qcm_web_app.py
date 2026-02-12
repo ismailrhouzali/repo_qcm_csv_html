@@ -1895,8 +1895,8 @@ def page_discover():
     .module-card {
         background: white; border-radius: 12px; padding: 20px;
         box-shadow: 0 4px 10px rgba(0,0,0,0.05); border: 1px solid #f0f0f0;
-        transition: transform 0.2s; margin-bottom: 20px; min-height: 180px;
-        display: flex; flex-direction: column; justify-content: space-between;
+        transition: transform 0.2s; margin-bottom: 20px;
+        display: flex; flex-direction: column; gap: 15px;
     }
     .module-card:hover { transform: translateY(-5px); box-shadow: 0 8px 15px rgba(0,0,0,0.08); }
     .card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
@@ -1960,7 +1960,8 @@ def page_discover():
                     icons = {"QCM": "⚡", "QA": "❓", "DEF": "📜", "SUM": "📝"}
                     icon = icons.get(m_type, "📄")
 
-                    card_html = f"""<div class="module-card">
+                    with st.container():
+                        card_html = f"""<div class="module-card">
 <div class="card-header">
 <div class="icon-box">{icon}</div>
 <div>
@@ -1973,36 +1974,34 @@ def page_discover():
 {"<span class='in-progress'>⏳ En cours</span>" if progress else ""}
 </div>
 </div>"""
-                    st.markdown(card_html, unsafe_allow_html=True)
-                    
-                    ac1, ac2 = st.columns(2)
-                    if m_type == "QCM":
-                        if ac1.button("🚀 Lancer", key=f"launch_{m_id}"):
-                            st.session_state.auto_load_csv = m_content
-                            st.session_state.quiz_mod = m_name
-                            st.session_state.current_page = "⚡ Quiz Interactif"
-                            st.rerun()
-                    else:
-                        if ac1.button("👁️ Voir", key=f"view_{m_id}"):
-                            st.session_state.view_content = {"name": m_name, "content": m_content, "type": m_type}
-                            st.session_state.current_page = "👁️ Visualiseur"
-                            st.rerun()
-                    
-                    # --- Multi-format Exports ---
-                    with st.expander("📥 Télécharger", expanded=False):
-                        d_col1, d_col2, d_col3 = st.columns(3)
-                        # CSV
-                        d_col1.download_button("CSV", m_content, f"{m_name}.csv", key=f"expl_csv_{m_id}")
-                        # HTML
-                        html_exp = generate_export_html(m_content, m_name, m_type)
-                        d_col2.download_button("HTML", html_exp, f"{m_name}.html", key=f"expl_html_{m_id}")
-                        # PDF
-                        pdf_exp = convert_html_to_pdf(html_exp)
-                        if pdf_exp:
-                            d_col3.download_button("PDF", pdf_exp, f"{m_name}.pdf", key=f"expl_pdf_{m_id}")
+                        st.markdown(card_html, unsafe_allow_html=True)
+                        
+                        # Actions directly below card content but visually inside
+                        ac1, ac2 = st.columns(2)
+                        if m_type == "QCM":
+                            if ac1.button("🚀 Lancer", key=f"launch_{m_id}", use_container_width=True):
+                                st.session_state.auto_load_csv = m_content
+                                st.session_state.quiz_mod = m_name
+                                st.session_state.current_page = "⚡ Quiz Interactif"
+                                st.rerun()
                         else:
-                            d_col3.disabled = True
-                            d_col3.caption("PDF X")
+                            if ac1.button("👁️ Voir", key=f"view_{m_id}", use_container_width=True):
+                                st.session_state.view_content = {"name": m_name, "content": m_content, "type": m_type}
+                                st.session_state.current_page = "👁️ Visualiseur"
+                                st.rerun()
+                        
+                        # --- Multi-format Exports ---
+                        with ac2.expander("📥 Export", expanded=False):
+                            d_col1, d_col2, d_col3 = st.columns(3)
+                            d_col1.download_button("CSV", m_content, f"{m_name}.csv", key=f"ex_csv_{m_id}", help="CSV")
+                            html_exp = generate_export_html(m_content, m_name, m_type)
+                            d_col2.download_button("HTM", html_exp, f"{m_name}.html", key=f"ex_htm_{m_id}", help="HTML")
+                            pdf_exp = convert_html_to_pdf(html_exp)
+                            if pdf_exp:
+                                d_col3.download_button("PDF", pdf_exp, f"{m_name}.pdf", key=f"ex_pdf_{m_id}", help="PDF")
+                            else:
+                                d_col3.caption("X")
+                        st.write("---")
     
     # Pagination controls
     st.divider()
