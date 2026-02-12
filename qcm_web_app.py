@@ -1580,14 +1580,10 @@ def page_quiz():
 
         # --- MODULE LOADING Logic (SQL Based) ---
         st.subheader("📂 Charger un module")
-        # Directement filtrer pour n'afficher que les QCM
         all_modules = db_get_modules(m_type="QCM")
         if all_modules:
-            # Plus de catégorie, on affiche directement les modules filtrés
             mod_options = {f"{m[1]}": m for m in all_modules}
-            
             sel_mod_name = st.selectbox("Module", ["Choisir..."] + list(mod_options.keys()), key="quiz_mod_sel")
-            
             if sel_mod_name != "Choisir...":
                 selected_module = mod_options[sel_mod_name]
                 if st.button("📥 Charger ce module"):
@@ -1595,6 +1591,8 @@ def page_quiz():
                     st.session_state.quiz_mod = selected_module[1]
                     st.success(f"Module '{selected_module[1]}' chargé !")
                     st.rerun()
+        else:
+            st.info("💡 Aucun module de type 'QCM' trouvé. Utilisez le 'Créateur' pour en enregistrer un.")
 
         csv_quiz = st.text_area("Source CSV du Quiz", height=150, value=st.session_state.get("csv_source_input", ""), key="quiz_csv_area")
         
