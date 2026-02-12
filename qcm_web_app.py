@@ -1126,7 +1126,29 @@ def page_pdf_transformer():
             suffix = "_SUM.md"
 
         st.text_area(f"📋 Prompt IA pour {ex_type}", prompt, height=250)
-        st.info(f"💡 **Conseil** : Une fois le contenu généré par l'IA, utilisez l'onglet **'Créateur'** pour l'enregistrer avec le nom se terminant par `{suffix}`.")
+        
+        with st.expander("🎓 Guide : Comment obtenir les meilleurs résultats avec l'IA ?", expanded=True):
+            st.markdown(f"""
+            ### 🚀 Étapes à suivre :
+            1. **Recopie le prompt** ci-dessus.
+            2. **Colle-le** dans ton IA préférée (ChatGPT, Claude, Gemini, Mistral).
+            3. **Vérifie** que l'IA respecte bien le format `Question|A|B|C|D|E|F|Réponse|Explication`.
+            4. **Copie le résultat CSV** généré par l'IA.
+            5. **Va dans l'onglet '✍️ Créateur'** et colle le résultat pour générer ton PDF/HTML.
+
+            ### 💡 Conseils pour un QCM de qualité :
+            * **Température** : Si possible, demande à l'IA d'utiliser une `température de 0.2` pour plus de précision factuelle.
+            * **Complexité** : N'hésite pas à ajouter au prompt : *"Génère des questions de niveau expert avec des pièges subtils."*
+            * **Vérification** : Toujours relire les explications générées pour s'assurer qu'elles correspondent au cours.
+            
+            ### ⚠️ Format de fichier :
+            Pour que le système reconnaisse le type de contenu automatiquement, nomme tes fichiers avec ces suffixes :
+            - **_QCM.csv** : Pour les questions à choix multiples.
+            - **_QA.csv** : Pour les flashcards simple Question/Réponse.
+            - **_SUM.md** : Pour les synthèses et résumés.
+            """)
+        
+        st.info(f"💡 **Conseil rapide** : Une fois le contenu généré par l'IA, utilisez l'onglet **'Créateur'** pour l'enregistrer avec le suffixe `{suffix}`.")
 
 def page_creator():
     st.header("✍️ Créateur de Contenu (HTML/PDF)")
