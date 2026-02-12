@@ -1092,7 +1092,7 @@ def page_pdf_transformer():
             
             st.subheader("⚙️ Configurer l'IA")
             ex_type = st.radio("Type d'exercice souhaité :", 
-                              ["QCM (Interactif)", "Q&A (Flashcards)", "Synthèse & Définitions"],
+                              ["QCM (Interactif)", "Q&A (Flashcards)", "Glossaire", "Synthèse"],
                               horizontal=True)
         except Exception as e:
             logger.error(f"Erreur lors de l'extraction PDF : {e}")
@@ -1102,29 +1102,53 @@ def page_pdf_transformer():
         target_lang = st.selectbox("Langue cible :", ["Français", "Arabe", "Anglais"])
         
         if ex_type == "QCM (Interactif)":
-            prompt = f"""Agis comme un expert pédagogique. À partir du texte suivant, génère un QCM au format CSV strict avec le délimiteur '|'.
-            Colonnes : Question|A|B|C|D|E|F|Réponse|Explication
-            Langue : {target_lang}.
-            Suffixe de fichier recommandé : _QCM.csv
+            prompt = f"""Tu es un expert en ingénierie pédagogique. À partir du texte fourni, génère un examen QCM de haute qualité.
             
-            Texte : {cleaned_text}"""
+            CONSIGNES STRICTES :
+            1. Format : CSV strict (délimiteur '|')
+            2. Colonnes : Question|A|B|C|D|E|F|Réponse|Explication
+            3. Réponse : Indique la lettre (ex: A) ou les lettres (ex: AC) sans séparateur.
+            4. Qualité : Crée des distracteurs plausibles. L'explication doit justifier la bonne réponse.
+            5. Langue : {target_lang}.
+            
+            TEXTE DE RÉFÉRENCE :
+            {cleaned_text}"""
             suffix = "_QCM.csv"
+            
         elif ex_type == "Q&A (Flashcards)":
-            prompt = f"""Génère une liste de Questions/Réponses pédagogiques à partir du texte.
-            Format CSV strict (délimiteur |) : Question|Réponse
-            Langue : {target_lang}.
-            Suffixe de fichier recommandé : _QA.csv
+            prompt = f"""Génère une série de questions-réponses (Flashcards) pour aider à la mémorisation du texte suivant.
             
-            Texte : {cleaned_text}"""
+            CONSIGNES STRICTES :
+            1. Format : CSV strict (délimiteur '|')
+            2. Colonnes : Question|Réponse
+            3. Langue : {target_lang}.
+            
+            TEXTE DE RÉFÉRENCE :
+            {cleaned_text}"""
             suffix = "_QA.csv"
-        else:
-            prompt = f"""Génère une synthèse pédagogique structurée.
-            Inclus : 1. Points clés, 2. Définitions importantes, 3. Résumé global.
-            Format : Markdown.
-            Langue : {target_lang}.
-            Suffixe de fichier recommandé : _SUM.md
             
-            Texte : {cleaned_text}"""
+        elif ex_type == "Glossaire":
+            prompt = f"""Identifie tous les concepts clés, termes techniques et définitions importantes dans le texte suivant.
+            
+            CONSIGNES STRICTES :
+            1. Format : CSV strict (délimiteur '|')
+            2. Colonnes : Terme|Définition
+            3. Langue : {target_lang}.
+            
+            TEXTE DE RÉFÉRENCE :
+            {cleaned_text}"""
+            suffix = "_DEF.csv"
+            
+        else: # Synthèse
+            prompt = f"""Rédige une synthèse structurée et pédagogique du texte suivant.
+            
+            CONSIGNES STRICTES :
+            1. Format : Markdown (utilisant des titres #, ## et des listes -)
+            2. Contenu : Points clés, mécanismes principaux et résumé global.
+            3. Langue : {target_lang}.
+            
+            TEXTE DE RÉFÉRENCE :
+            {cleaned_text}"""
             suffix = "_SUM.md"
 
         st.text_area(f"📋 Prompt IA pour {ex_type}", prompt, height=250)
