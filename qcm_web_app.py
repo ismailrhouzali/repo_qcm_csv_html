@@ -133,6 +133,9 @@ def validate_csv_data(csv_text, q_type):
     for i, row in enumerate(reader, 1):
         if not any(row): continue # Skip empty lines
         
+        # Skip header if next(reader) didn't catch it or if it repeats
+        if str(row[0]).strip().lower() in ["question", "titre"]: continue
+        
         if q_type == "QCM Classique":
             if len(row) < 7:
                 errors.append(f"Ligne {i} : Colonnes insuffisantes ({len(row)}/7 minimum).")
@@ -142,8 +145,8 @@ def validate_csv_data(csv_text, q_type):
             # Super Robust parsing: Find the Answer column by pattern matching
             q_text = row[0].strip()
             
-            # Pattern for Answer: letters A-F, possibly separated by ; , : or space
-            ans_pattern = re.compile(r'^[A-Z]([;,: ]*[A-Z])*$')
+            # Match A or A;B or A B but NOT long words without separators
+            ans_pattern = re.compile(r'^[A-Z]([;, ]+[A-Z])*$')
             
             ans_idx = -1
             # Search for answer between index 2 and a reasonable limit (e.g., 7 for 6 options)
@@ -159,6 +162,8 @@ def validate_csv_data(csv_text, q_type):
                 ans_idx = max(1, len(row) - 2)
             
             ans = row[ans_idx].strip().upper()
+            if ans in ["RÉPONSE", "REPONSE", "ANSWER"]: continue
+            
             expl = "|".join(row[ans_idx+1:]) # Join all trailing columns as explanation
             opts = [o.strip() for o in row[1:ans_idx] if o.strip()]
             num_opts = len(opts)
@@ -769,11 +774,13 @@ def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Exame
             })
     else:
         for row in reader:
+            if not row or not any(row): continue
+            if str(row[0]).strip().lower() in ["question", "titre"]: continue
             if len(row) < 7: continue
             q_text = row[0].strip()
             
             # Super Robust Detection
-            ans_pattern = re.compile(r'^[A-Z]([;,: ]*[A-Z])*$')
+            ans_pattern = re.compile(r'^[A-Z]([;, ]+[A-Z])*$')
             ans_idx = -1
             for j in range(2, min(len(row), 8)):
                 val = row[j].strip().upper()
@@ -1135,11 +1142,13 @@ def perform_stats(csv_text):
     f = io.StringIO(csv_text); reader = csv.reader(f, delimiter='|'); next(reader, None)
     total, single, multi, all_ans = 0, 0, 0, []
     for row in reader:
+        if not row or not any(row): continue
+        if str(row[0]).strip().lower() in ["question", "titre"]: continue
         if len(row) < 7: continue
         total += 1
         
         # Robust answer detection
-        ans_pattern = re.compile(r'^[A-Z]([;,: ]*[A-Z])*$')
+        ans_pattern = re.compile(r'^[A-Z]([;, ]+[A-Z])*$')
         ans_idx = -1
         for j in range(2, min(len(row), 8)):
             val = row[j].strip().upper()
@@ -1162,9 +1171,11 @@ def parse_csv(text):
     f = io.StringIO(text); reader = csv.reader(f, delimiter='|'); next(reader, None)
     data = []
     for row in reader:
+        if not row or not any(row): continue
+        if str(row[0]).strip().lower() in ["question", "titre"]: continue
         if len(row) < 7: continue
         
-        ans_pattern = re.compile(r'^[A-F]([;,: ]*[A-F])*$')
+        ans_pattern = re.compile(r'^[A-Z]([;, ]+[A-Z])*$')
         ans_idx = -1
         for j in range(2, min(len(row), 8)):
             val = row[j].strip().upper()
