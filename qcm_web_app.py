@@ -139,15 +139,30 @@ def validate_csv_data(csv_text, q_type):
                 continue
             
             # Check options vs answer
-            # Robust dynamic parsing: Answer is row[-2], Explanation is row[-1]
-            # Options are row[1] to row[-2]
+            # Super Robust parsing: Find the Answer column by pattern matching
             q_text = row[0].strip()
-            ans = row[-2].strip().upper()
-            expl = row[-1].strip()
-            # Extract all non-empty options between Question and Answer
-            opts = [o.strip() for o in row[1:-2] if o.strip()]
+            
+            # Pattern for Answer: letters A-F, possibly separated by ; , : or space
+            ans_pattern = re.compile(r'^[A-F]([;,: ]*[A-F])*$')
+            
+            ans_idx = -1
+            # Search for answer between index 2 and a reasonable limit (e.g., 7 for 6 options)
+            # We skip index 1 because it's always an option
+            for j in range(2, min(len(row), 8)):
+                val = row[j].strip().upper()
+                if val and ans_pattern.match(val):
+                    ans_idx = j
+                    break
+            
+            # Fallback if no pattern found (last but one as before)
+            if ans_idx == -1:
+                ans_idx = max(1, len(row) - 2)
+            
+            ans = row[ans_idx].strip().upper()
+            expl = "|".join(row[ans_idx+1:]) # Join all trailing columns as explanation
+            opts = [o.strip() for o in row[1:ans_idx] if o.strip()]
             num_opts = len(opts)
-            lets = "ABCDEF"[:num_opts]
+            lets = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[:num_opts]
             
             if not ans:
                 errors.append(f"Ligne {i} : Réponse manquante.")
@@ -744,12 +759,22 @@ def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Exame
         for row in reader:
             if len(row) < 7: continue
             q_text = row[0].strip()
-            # Robust dynamic parsing
-            opts_text = [o.strip() for o in row[1:-2] if o.strip()]
-            ans = row[-2].strip().upper()
-            expl = row[-1].strip()
             
-            lets = ['A', 'B', 'C', 'D', 'E', 'F'][:len(opts_text)]
+            # Super Robust Detection
+            ans_pattern = re.compile(r'^[A-F]([;,: ]*[A-F])*$')
+            ans_idx = -1
+            for j in range(2, min(len(row), 8)):
+                val = row[j].strip().upper()
+                if val and ans_pattern.match(val):
+                    ans_idx = j
+                    break
+            if ans_idx == -1: ans_idx = max(1, len(row) - 2)
+            
+            opts_text = [o.strip() for o in row[1:ans_idx] if o.strip()]
+            ans = row[ans_idx].strip().upper()
+            expl = "|".join(row[ans_idx+1:])
+            
+            lets = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'][:len(opts_text)]
             correct_indices = [lets.index(l) for l in ans if l in lets]
             
             raw_questions.append({
@@ -788,7 +813,7 @@ def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Exame
             else:
                 opts_list = q['opts_data']
                 if shuffle_o: random.shuffle(opts_list)
-                final_lets = ['A', 'B', 'C', 'D', 'E', 'F'][:len(opts_list)]
+                final_lets = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'][:len(opts_list)]
                 new_ans_letters = "".join([final_lets[i] for i, opt in enumerate(opts_list) if opt['is_correct']])
                 
                 questions_html += f'<div class="question-block"><div class="question-text">{q_num}. {q["text"]}</div><ul class="options">'
@@ -1100,13 +1125,23 @@ def perform_stats(csv_text):
     for row in reader:
         if len(row) < 7: continue
         total += 1
-        # Robust answer extraction
-        ans_raw = str(row[-2]).strip().upper()
+        
+        # Robust answer detection
+        ans_pattern = re.compile(r'^[A-F]([;,: ]*[A-F])*$')
+        ans_idx = -1
+        for j in range(2, min(len(row), 8)):
+            val = row[j].strip().upper()
+            if val and ans_pattern.match(val):
+                ans_idx = j
+                break
+        if ans_idx == -1: ans_idx = max(1, len(row) - 2)
+        
+        ans_raw = str(row[ans_idx]).strip().upper()
         ans = ans_raw.replace(',', '').replace(' ', '').replace(';', '').replace(':', '')
         if len(ans) > 1: multi += 1
         else: single += 1
         for char in ans:
-            if char in 'ABCDEF': all_ans.append(char)
+            if char in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ': all_ans.append(char)
     counts = Counter(all_ans); total_ans = len(all_ans) if all_ans else 1
     dist = {k: (v/total_ans * 100) for k, v in counts.items()}
     return total, single, multi, dist
@@ -1116,12 +1151,21 @@ def parse_csv(text):
     data = []
     for row in reader:
         if len(row) < 7: continue
-        # Robust dynamic extraction: Ans is next-to-last, Expl is last
+        
+        ans_pattern = re.compile(r'^[A-F]([;,: ]*[A-F])*$')
+        ans_idx = -1
+        for j in range(2, min(len(row), 8)):
+            val = row[j].strip().upper()
+            if val and ans_pattern.match(val):
+                ans_idx = j
+                break
+        if ans_idx == -1: ans_idx = max(1, len(row) - 2)
+
         q = {
             'text': row[0].strip(),
-            'opts': [o.strip() for o in row[1:-2] if o.strip()],
-            'ans': row[-2].strip().replace(' ', '').replace(',', '').replace(';', '').replace(':', '').upper(),
-            'expl': row[-1].strip()
+            'opts': [o.strip() for o in row[1:ans_idx] if o.strip()],
+            'ans': row[ans_idx].strip().replace(' ', '').replace(',', '').replace(';', '').replace(':', '').upper(),
+            'expl': "|".join(row[ans_idx+1:])
         }
         data.append(q)
     return data
