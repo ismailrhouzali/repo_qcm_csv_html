@@ -146,14 +146,14 @@ def validate_csv_data(csv_text, q_type):
             q_text = row[0].strip()
             
             # Match A or A;B or A B but NOT long words without separators
-            ans_pattern = re.compile(r'^[A-Z]([;, ]+[A-Z])*$')
+            ans_pattern = re.compile(r'^[A-Z]([;, ]{0,2}[A-Z])*$')
             
             ans_idx = -1
-            # Search for answer between index 2 and a reasonable limit (e.g., 7 for 6 options)
-            # We skip index 1 because it's always an option
-            for j in range(2, min(len(row), 8)):
+            # Search from right to left to favor the answer column (usually near the end)
+            search_limit = min(len(row) - 1, 11)
+            for j in range(search_limit, 1, -1):
                 val = row[j].strip().upper()
-                if val and ans_pattern.match(val):
+                if val and len(val) <= 15 and ans_pattern.match(val):
                     ans_idx = j
                     break
             
@@ -816,11 +816,12 @@ def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Exame
             q_text = row[0].strip()
             
             # Super Robust Detection
-            ans_pattern = re.compile(r'^[A-Z]([;, ]+[A-Z])*$')
+            ans_pattern = re.compile(r'^[A-Z]([;, ]{0,2}[A-Z])*$')
             ans_idx = -1
-            for j in range(2, min(len(row), 8)):
+            search_limit = min(len(row) - 1, 11)
+            for j in range(search_limit, 1, -1):
                 val = row[j].strip().upper()
-                if val and ans_pattern.match(val):
+                if val and len(val) <= 15 and ans_pattern.match(val):
                     ans_idx = j
                     break
             if ans_idx == -1: ans_idx = max(1, len(row) - 2)
@@ -1184,11 +1185,12 @@ def perform_stats(csv_text):
         total += 1
         
         # Robust answer detection
-        ans_pattern = re.compile(r'^[A-Z]([;, ]+[A-Z])*$')
+        ans_pattern = re.compile(r'^[A-Z]([;, ]{0,2}[A-Z])*$')
         ans_idx = -1
-        for j in range(2, min(len(row), 8)):
+        search_limit = min(len(row) - 1, 11)
+        for j in range(search_limit, 1, -1):
             val = row[j].strip().upper()
-            if val and ans_pattern.match(val):
+            if val and len(val) <= 15 and ans_pattern.match(val):
                 ans_idx = j
                 break
         if ans_idx == -1: ans_idx = max(1, len(row) - 2)
@@ -1211,11 +1213,12 @@ def parse_csv(text):
         if str(row[0]).strip().lower() in ["question", "titre"]: continue
         if len(row) < 7: continue
         
-        ans_pattern = re.compile(r'^[A-Z]([;, ]+[A-Z])*$')
+        ans_pattern = re.compile(r'^[A-Z]([;, ]{0,2}[A-Z])*$')
         ans_idx = -1
-        for j in range(2, min(len(row), 8)):
+        search_limit = min(len(row) - 1, 11)
+        for j in range(search_limit, 1, -1):
             val = row[j].strip().upper()
-            if val and ans_pattern.match(val):
+            if val and len(val) <= 15 and ans_pattern.match(val):
                 ans_idx = j
                 break
         if ans_idx == -1: ans_idx = max(1, len(row) - 2)
