@@ -667,7 +667,7 @@ def generate_certificate_html(user_name, course_name, score, total):
     """
     return html
 
-def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Examen", shuffle_q=False, shuffle_o=False, q_type="QCM Classique", add_sheet=True):
+def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Examen", shuffle_q=False, shuffle_o=False, q_type="QCM Classique", add_sheet=True, open_all=False):
     col_css = "column-count: 3; -webkit-column-count: 3; -moz-column-count: 3; column-gap: 30px;" if use_columns else ""
     # Only show QR for QCM mode as it links to a correction sheet
     qr_code_html = ""
@@ -764,7 +764,7 @@ def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Exame
                 questions_html += f"""
                 <div class="question-block">
                     <div class="question-text">{q_num}. {q['text']}</div>
-                    <details>
+                    <details {"open" if open_all else ""}>
                         <summary>▶ Réponse</summary>
                         <div class="qa-answer">{q['ans']}</div>
                     </details>
@@ -1101,7 +1101,7 @@ def generate_export_html(content, title, m_type, **kwargs):
                                     q_type="QCM Classique", add_sheet=kwargs.get('add_sheet', True))
     elif m_type == "QA":
         return generate_html_content(content, title, use_columns=kwargs.get('use_columns', False),
-                                    q_type="Questions / Réponses")
+                                    q_type="Questions / Réponses", open_all=kwargs.get('open_all', False))
     elif m_type == "DEF":
         return generate_html_content(content, title, use_columns=kwargs.get('use_columns', False),
                                     q_type="Glossaire (Concept | Définition)")
@@ -1435,6 +1435,9 @@ def page_creator():
         use_3_col = st.checkbox("3 Colonnes", value=True)
         add_qr = st.checkbox("QR Code", value=True)
         add_sheet = st.checkbox("Feuille Réponses", value=True)
+        open_all = False
+        if "Questions" in q_type:
+            open_all = st.checkbox("Ouvrir tout", value=False)
 
     # The title is handled by module_title above
 
@@ -1488,7 +1491,8 @@ def page_creator():
         
         html_out = generate_export_html(csv_in, doc_title, m_type_for_export, 
                                         use_columns=use_3_col, add_qr=add_qr, mode=html_mode,
-                                        shuffle_q=shuffle_q, shuffle_o=shuffle_o, add_sheet=add_sheet)
+                                        shuffle_q=shuffle_q, shuffle_o=shuffle_o, add_sheet=add_sheet,
+                                        open_all=open_all)
         
         c1, c2 = st.columns(2)
         with c1:
