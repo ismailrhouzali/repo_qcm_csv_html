@@ -18,6 +18,7 @@ import shutil
 import hashlib
 from contextlib import contextmanager
 from streamlit_option_menu import option_menu
+import markdown
 
 # --- ADVANCED LIBS ---
 import PyPDF2
@@ -884,44 +885,11 @@ def generate_def_html(content, title):
 </body></html>"""
 
 def generate_sum_html(content, title):
-    """Génère un HTML professionnel pour les synthèses/résumés Markdown - style QCM."""
-    import re
-    
-    html_body = content
-    
-    # Markdown to HTML conversion
-    # Headers (h1 -> h2 for sections, h2 -> h3 for subsections)
-    html_body = re.sub(r'^### (.+)$', r'<h4>\1</h4>', html_body, flags=re.MULTILINE)
-    html_body = re.sub(r'^## (.+)$', r'<h3>\1</h3>', html_body, flags=re.MULTILINE)
-    html_body = re.sub(r'^# (.+)$', r'<h2>\1</h2>', html_body, flags=re.MULTILINE)
-    
-    # Bold / Italic
-    html_body = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', html_body)
-    html_body = re.sub(r'\*(.+?)\*', r'<em>\1</em>', html_body)
-    
-    # Code blocks (triple backticks)
-    html_body = re.sub(r'```(.+?)```', r'<pre><code>\1</code></pre>', html_body, flags=re.DOTALL)
-    
-    # Inline code
-    html_body = re.sub(r'`(.+?)`', r'<code>\1</code>', html_body)
-    
-    # Lists (unordered)
-    html_body = re.sub(r'^- (.+)$', r'<li>\1</li>', html_body, flags=re.MULTILINE)
-    # Wrap consecutive list items
-    html_body = re.sub(r'(<li>.*?</li>\n?)+', r'<ul>\g<0></ul>', html_body)
-    
-    # Numbered lists
-    html_body = re.sub(r'^\d+\. (.+)$', r'<li>\1</li>', html_body, flags=re.MULTILINE)
-    
-    # Blockquotes
-    html_body = re.sub(r'^> (.+)$', r'<blockquote>\1</blockquote>', html_body, flags=re.MULTILINE)
-    
-    # Paragraphs (double newlines)
-    html_body = html_body.replace('\n\n', '</p><p>')
-    html_body = f'<p>{html_body}</p>'
-    
-    # Clean up empty paragraphs
-    html_body = re.sub(r'<p>\s*</p>', '', html_body)
+    """Génère un HTML professionnel pour les synthèses/résumés Markdown avec support complet."""
+    # Conversion Markdown complète avec extensions
+    # 'extra' supporte les tableaux, listes complexes, etc.
+    # 'toc' génère une table des matières automatique s'il y a [TOC] ou via anchor ids
+    html_body = markdown.markdown(content, extensions=['extra', 'toc', 'sane_lists'])
     
     return f"""<!DOCTYPE html>
 <html lang="fr">
@@ -930,165 +898,167 @@ def generate_sum_html(content, title):
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{title}</title>
 <style>
+    :root {{
+        --h1-color: #1e3a8a;
+        --h2-color: #2563eb;
+        --h3-color: #059669;
+        --text-color: #1f2937;
+        --bg-color: #ffffff;
+        --code-bg: #f3f4f6;
+        --border-color: #e5e7eb;
+    }}
+
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
     @page {{ size: A4; margin: 1.5cm; }}
     
     body {{ 
-        font-family: 'Georgia', 'Times New Roman', serif; 
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
         font-size: 11pt; 
-        line-height: 1.7; 
-        color: #1a1a1a; 
-        background: white;
-        max-width: 900px;
+        line-height: 1.6; 
+        color: var(--text-color); 
+        background: var(--bg-color);
+        max-width: 850px;
         margin: 0 auto;
-        padding: 40px;
+        padding: 50px 40px;
     }}
+
+    /* TOC Styling */
+    .toc {{
+        background: #f8fafc;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 40px;
+        border: 1px solid var(--border-color);
+    }}
+    .toc ul {{ list-style: none; padding-left: 0; }}
+    .toc li {{ margin-bottom: 5px; }}
+    .toc a {{ text-decoration: none; color: var(--h2-color); font-weight: 500; }}
+    .toc a:hover {{ text-decoration: underline; }}
     
-    /* Header styling - same as QCM */
     h1 {{ 
         text-align: center; 
-        color: #1e3a8a; 
-        font-size: 1.8em; 
-        margin-bottom: 8px;
-        font-weight: 700;
-        border-bottom: 3px solid #3b82f6;
-        padding-bottom: 12px;
+        color: var(--h1-color); 
+        font-size: 2.2em; 
+        margin-bottom: 20px;
+        font-weight: 800;
+        border-bottom: 4px solid var(--h1-color);
+        padding-bottom: 15px;
+        text-transform: uppercase;
     }}
     
     h2 {{
-        color: #1e40af;
-        font-size: 1.4em;
-        margin-top: 32px;
-        margin-bottom: 16px;
-        border-left: 5px solid #3b82f6;
-        padding-left: 16px;
-        font-weight: 600;
+        color: var(--h2-color);
+        font-size: 1.6em;
+        margin-top: 40px;
+        margin-bottom: 15px;
+        border-bottom: 2px solid var(--border-color);
+        padding-bottom: 8px;
+        font-weight: 700;
     }}
     
     h3 {{
-        color: #1e40af;
-        font-size: 1.15em;
-        margin-top: 24px;
+        color: var(--h3-color);
+        font-size: 1.3em;
+        margin-top: 30px;
         margin-bottom: 12px;
         font-weight: 600;
     }}
     
-    h4 {{
-        color: #475569;
-        font-size: 1.05em;
-        margin-top: 16px;
-        margin-bottom: 8px;
-        font-weight: 600;
-    }}
-    
-    p {{ 
-        margin-bottom: 14px; 
-        text-align: justify;
-        orphans: 3;
-        widows: 3;
-    }}
+    p {{ margin-bottom: 16px; text-align: justify; }}
     
     /* Lists */
-    ul, ol {{ 
-        margin: 12px 0 12px 24px; 
-        line-height: 1.8;
-    }}
+    ul, ol {{ margin: 15px 0 15px 30px; }}
+    li {{ margin-bottom: 8px; }}
     
-    li {{ 
-        margin-bottom: 8px; 
+    /* Tables */
+    table {{ 
+        width: 100%; 
+        border-collapse: collapse; 
+        margin: 25px 0; 
+        font-size: 10pt;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     }}
-    
-    /* Text formatting */
-    strong {{ 
-        color: #1e40af;
-        font-weight: 700;
+    th {{ 
+        background-color: #f9fafb; 
+        color: var(--h1-color); 
+        padding: 12px; 
+        border: 1px solid var(--border-color);
+        text-align: left;
     }}
-    
-    em {{ 
-        color: #374151;
-        font-style: italic;
+    td {{ 
+        padding: 10px 12px; 
+        border: 1px solid var(--border-color); 
     }}
+    tr:nth-child(even) {{ background-color: #fdfdfd; }}
     
     /* Code blocks */
     code {{
-        background: #f1f5f9;
+        background: var(--code-bg);
         padding: 2px 6px;
-        border-radius: 3px;
-        font-family: 'Courier New', monospace;
-        font-size: 0.95em;
-        color: #dc2626;
+        border-radius: 4px;
+        font-family: 'Cascadia Code', 'Fira Code', 'Courier New', monospace;
+        font-size: 0.9em;
+        color: #d946ef;
     }}
     
     pre {{
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        border-left: 4px solid #3b82f6;
-        border-radius: 4px;
-        padding: 16px;
-        margin: 16px 0;
+        background: #1e293b;
+        color: #e2e8f0;
+        padding: 20px;
+        border-radius: 8px;
+        margin: 20px 0;
         overflow-x: auto;
+        font-family: 'Cascadia Code', 'Fira Code', monospace;
+        font-size: 9.5pt;
+        line-height: 1.5;
     }}
     
     pre code {{
         background: none;
         padding: 0;
-        color: #1e293b;
-        font-size: 10pt;
+        color: inherit;
+        font-size: inherit;
     }}
     
-    /* Blockquotes */
+    /* Horizontal Rule */
+    hr {{
+        border: 0;
+        height: 1px;
+        background-image: linear-gradient(to right, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0));
+        margin: 40px 0;
+    }}
+
     blockquote {{
-        border-left: 4px solid #fbbf24;
-        background: #fffbeb;
-        padding: 12px 16px;
-        margin: 16px 0;
-        border-radius: 4px;
+        border-left: 5px solid var(--h3-color);
+        background: #f0fdf4;
+        padding: 15px 25px;
+        margin: 20px 0;
         font-style: italic;
-        color: #92400e;
+        color: #065f46;
+        border-radius: 0 8px 8px 0;
     }}
-    
-    /* Print styles */
+
+    a {{ color: var(--h2-color); text-decoration: none; }}
+    a:hover {{ text-decoration: underline; }}
+
+    /* Print adjustments */
     @media print {{
-        body {{ 
-            padding: 0; 
-            background: white;
-            max-width: 100%;
-        }}
-        
-        h1, h2, h3 {{ 
-            page-break-after: avoid; 
-        }}
-        
-        p, li {{ 
-            page-break-inside: avoid; 
-        }}
-        
-        pre {{
-            page-break-inside: avoid;
-        }}
-    }}
-    
-    /* Screen styles */
-    @media screen {{
-        body {{
-            background: #f8fafc;
-            padding: 40px 20px;
-        }}
-        
-        .content-wrapper {{
-            background: white;
-            padding: 40px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            border-radius: 8px;
-        }}
+        body {{ padding: 0; max-width: 100%; }}
+        .toc {{ display: none; }}
+        h2, h3 {{ page-break-after: avoid; }}
+        pre, table {{ page-break-inside: avoid; }}
     }}
 </style>
 </head>
 <body>
-<div class="content-wrapper">
-    <h1>📝 {title}</h1>
-    {html_body}
-</div>
+    <h1>{title}</h1>
+    <div class="toc no-print">
+        <strong>📌 Sommaire</strong>
+        {markdown.markdown('[TOC]', extensions=['toc'])}
+    </div>
+    <div class="content">
+        {html_body}
+    </div>
 </body>
 </html>"""
 

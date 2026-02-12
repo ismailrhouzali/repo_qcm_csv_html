@@ -9,3 +9,4 @@ python-docx
 xlsxwriter
 openpyxl
 streamlit-option-menu
+markdown
