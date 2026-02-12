@@ -1649,8 +1649,6 @@ def page_quiz():
                 # Identify course name for history
                 mod_name = st.session_state.get("quiz_mod", "Quiz Manuel")
                 st.session_state.current_course_name = mod_name if mod_name != "Choisir..." else "Quiz Manuel"
-        st.markdown('</div>', unsafe_allow_html=True)
-                
                 # Parsing and Shuffling
                 questions = parse_csv(csv_quiz)
                 if shuffle_q:
@@ -1679,6 +1677,7 @@ def page_quiz():
                 st.session_state.validated_current = False
                 st.session_state.score_submitted = False
                 st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
     elif st.session_state.quiz_started:
         questions = st.session_state.shuffled_questions
         num_q = len(questions)
