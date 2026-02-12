@@ -138,9 +138,13 @@ def validate_csv_data(csv_text, q_type):
                 continue
             
             # Check options vs answer
+            # Robust dynamic parsing: Answer is row[-2], Explanation is row[-1]
+            # Options are row[1] to row[-2]
             q_text = row[0].strip()
-            ans = (row[7] if len(row) >= 9 else row[5]).strip().upper()
-            opts = [row[j] for j in range(1, 7 if len(row) >= 9 else 5) if row[j].strip()]
+            ans = row[-2].strip().upper()
+            expl = row[-1].strip()
+            # Extract all non-empty options between Question and Answer
+            opts = [o.strip() for o in row[1:-2] if o.strip()]
             num_opts = len(opts)
             lets = "ABCDEF"[:num_opts]
             
@@ -726,21 +730,17 @@ def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Exame
         for row in reader:
             if len(row) < 7: continue
             q_text = row[0].strip()
-            if len(row) >= 9:
-                opts = [row[i].strip() for i in range(1, 7)]
-                ans = row[7].strip()
-                expl = row[8].strip()
-            else:
-                opts = [row[i].strip() for i in range(1, 5)]
-                ans = row[5].strip()
-                expl = row[6].strip()
+            # Robust dynamic parsing
+            opts_text = [o.strip() for o in row[1:-2] if o.strip()]
+            ans = row[-2].strip().upper()
+            expl = row[-1].strip()
             
-            lets = ['A', 'B', 'C', 'D', 'E', 'F'][:len(opts)]
+            lets = ['A', 'B', 'C', 'D', 'E', 'F'][:len(opts_text)]
             correct_indices = [lets.index(l) for l in ans if l in lets]
             
             raw_questions.append({
                 'text': q_text,
-                'opts_data': [{'text': o, 'is_correct': (i in correct_indices)} for i, o in enumerate(opts) if o],
+                'opts_data': [{'text': o, 'is_correct': (i in correct_indices)} for i, o in enumerate(opts_text)],
                 'expl': expl,
                 'type': 'QCM'
             })
@@ -1086,7 +1086,9 @@ def perform_stats(csv_text):
     for row in reader:
         if len(row) < 7: continue
         total += 1
-        ans = str(row[7] if len(row) >= 9 else row[5]).strip().upper().replace(',', '').replace(' ', '').replace(';', '').replace(':', '')
+        # Robust answer extraction
+        ans_raw = str(row[-2]).strip().upper()
+        ans = ans_raw.replace(',', '').replace(' ', '').replace(';', '').replace(':', '')
         if len(ans) > 1: multi += 1
         else: single += 1
         for char in ans:
@@ -1100,15 +1102,13 @@ def parse_csv(text):
     data = []
     for row in reader:
         if len(row) < 7: continue
-        q = {'text': row[0].strip()}
-        if len(row) >= 9:
-            q['opts'] = [row[i].strip() for i in range(1, 7)]
-            q['ans'] = row[7].strip().replace(' ', '').replace(',', '').replace(';', '').replace(':', '').upper()
-            q['expl'] = row[8].strip()
-        else:
-            q['opts'] = [row[i].strip() for i in range(1, 5)]
-            q['ans'] = row[5].strip().replace(' ', '').replace(',', '').replace(';', '').replace(':', '').upper()
-            q['expl'] = row[6].strip()
+        # Robust dynamic extraction: Ans is next-to-last, Expl is last
+        q = {
+            'text': row[0].strip(),
+            'opts': [o.strip() for o in row[1:-2] if o.strip()],
+            'ans': row[-2].strip().replace(' ', '').replace(',', '').replace(';', '').replace(':', '').upper(),
+            'expl': row[-1].strip()
+        }
         data.append(q)
     return data
 
