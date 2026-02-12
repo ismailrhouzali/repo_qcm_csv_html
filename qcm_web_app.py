@@ -1552,6 +1552,7 @@ def page_quiz():
     
     # Handle pre-loaded module from Explorer or Resume logic
     if "auto_load_csv" in st.session_state and st.session_state.auto_load_csv:
+        st.session_state.quiz_csv_area = st.session_state.auto_load_csv
         st.session_state.csv_source_input = st.session_state.auto_load_csv
         st.session_state.auto_load_csv = None
         st.info(f"📦 Module '{st.session_state.get('quiz_mod')}' chargé.")
@@ -1587,6 +1588,7 @@ def page_quiz():
             if sel_mod_name != "Choisir...":
                 selected_module = mod_options[sel_mod_name]
                 if st.button("📥 Charger ce module"):
+                    st.session_state.quiz_csv_area = selected_module[4]
                     st.session_state.csv_source_input = selected_module[4]
                     st.session_state.quiz_mod = selected_module[1]
                     st.success(f"Module '{selected_module[1]}' chargé !")
