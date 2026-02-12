@@ -1,0 +1,17 @@
+# Streamlit app
+venv/
+.streamlit/
+__pycache__/
+*.pyc
+.env
+
+# Database/Storage (if you want to keep them local)
+# data/
+
+# Old project folders (if not used)
+# backend/
+# frontend/
+
+# System files
+.DS_Store
+Thumbs.db

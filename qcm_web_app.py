@@ -15,10 +15,11 @@ import re
 from contextlib import contextmanager
 import zipfile
 import json as json_lib
+import json
+import shutil
 
 # --- ADVANCED LIBS ---
 import PyPDF2
-import sqlite3
 
 # --- LOGGING CONFIGURATION ---
 logging.basicConfig(
@@ -195,337 +196,246 @@ if 'auto_load_csv' not in st.session_state:
 if 'view_content' not in st.session_state:
     st.session_state.view_content = {"name": "", "content": "", "type": ""}
 
-# --- DATABASE LOGIC ---
-DB_NAME = "qcm_master.db"
+# --- DATABASE LOGIC (Filesystem Based) ---
+# We use files to simulate a database for easier GitHub deployment
+DATA_DIR = "data"
+MODULES_DIR = "modules"
 
-@contextmanager
-def db_context():
-    """Context manager pour gérer automatiquement les connexions DB."""
-    conn = None
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        logger.debug(f"Database connection opened: {DB_NAME}")
-        yield conn
-    except sqlite3.Error as e:
-        logger.error(f"Database error: {e}")
-        if conn:
-            conn.rollback()
-        raise
-    finally:
-        if conn:
-            conn.close()
-            logger.debug("Database connection closed")
+def init_db():
+    """Initialise les dossiers de données."""
+    if not os.path.exists(DATA_DIR):
+        os.makedirs(DATA_DIR)
+    if not os.path.exists(MODULES_DIR):
+        os.makedirs(MODULES_DIR)
+    
+    # Init history file if not exists
+    history_file = os.path.join(DATA_DIR, "history.csv")
+    if not os.path.exists(history_file):
+        with open(history_file, "w", encoding="utf-8") as f:
+            f.write("email,course,score,total,date\n")
+            
+    # Init progress file
+    progress_file = os.path.join(DATA_DIR, "progress.json")
+    if not os.path.exists(progress_file):
+        with open(progress_file, "w", encoding="utf-8") as f:
+            json.dump({}, f)
 
 def validate_input(text, max_length=10000, allow_html=False):
     """Valide et nettoie les entrées utilisateur."""
     if not text or not isinstance(text, str):
         return ""
-    
-    # Limite de longueur
     text = text[:max_length]
-    
-    # Supprime les caractères dangereux si HTML non autorisé
     if not allow_html:
         text = re.sub(r'<[^>]+>', '', text)
-    
-    # Échappe les caractères spéciaux SQL (en plus des requêtes préparées)
-    dangerous_chars = ['--', ';--', '/*', '*/', 'xp_', 'sp_']
-    for char in dangerous_chars:
-        if char in text.lower():
-            logger.warning(f"Suspicious input detected: {char}")
-            text = text.replace(char, '')
-    
     return text.strip()
 
-def init_db():
-    """Initialise la base de données avec toutes les tables et index."""
-    logger.info("Initializing database...")
-    with db_context() as conn:
-        c = conn.cursor()
-        
-        # Table Utilisateurs
-        c.execute('''CREATE TABLE IF NOT EXISTS users 
-                     (email TEXT PRIMARY KEY, nom TEXT, prenom TEXT, user_id TEXT)''')
-        
-        # Table Historique des scores
-        c.execute('''CREATE TABLE IF NOT EXISTS history 
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                      email TEXT, course TEXT, score INTEGER, total INTEGER, date TEXT)''')
-        c.execute('''CREATE INDEX IF NOT EXISTS idx_history_email ON history(email)''')
-        c.execute('''CREATE INDEX IF NOT EXISTS idx_history_course ON history(course)''')
-        
-        # Table Progression Quiz (En cours)
-        c.execute('''CREATE TABLE IF NOT EXISTS quiz_progress 
-                     (email TEXT, module_name TEXT, current_idx INTEGER, 
-                      answers_json TEXT, last_updated TEXT,
-                      PRIMARY KEY (email, module_name))''')
-        
-        # Table Centralisée des Modules Pédagogiques
-        c.execute('''CREATE TABLE IF NOT EXISTS educational_modules 
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                      name TEXT, category TEXT, type TEXT, content TEXT, 
-                      created_at TEXT)''')
-        c.execute('''CREATE INDEX IF NOT EXISTS idx_modules_type ON educational_modules(type)''')
-        c.execute('''CREATE INDEX IF NOT EXISTS idx_modules_category ON educational_modules(category)''')
-        c.execute('''CREATE INDEX IF NOT EXISTS idx_modules_name ON educational_modules(name)''')
-        
-        conn.commit()
-    logger.info("Database initialized successfully")
-
 def db_save_user(email, nom, prenom, user_id):
-    """Sauvegarde un utilisateur dans la base de données."""
-    email = validate_input(email, max_length=255)
-    nom = validate_input(nom, max_length=100)
-    prenom = validate_input(prenom, max_length=100)
-    user_id = validate_input(user_id, max_length=50)
+    """Sauvegarde un utilisateur dans un fichier JSON."""
+    email = email.lower()
+    users_file = os.path.join(DATA_DIR, "users.json")
+    users = {}
+    if os.path.exists(users_file):
+        try:
+            with open(users_file, "r", encoding="utf-8") as f:
+                users = json.load(f)
+        except: pass
     
-    logger.info(f"Saving user: {email}")
-    with db_context() as conn:
-        c = conn.cursor()
-        c.execute("INSERT OR REPLACE INTO users (email, nom, prenom, user_id) VALUES (?, ?, ?, ?)", 
-                  (email, nom, prenom, user_id))
-        conn.commit()
+    users[email] = {"nom": nom, "prenom": prenom, "user_id": user_id}
+    with open(users_file, "w", encoding="utf-8") as f:
+        json.dump(users, f, indent=4)
 
 def db_save_score(email, course, score, total):
-    """Sauvegarde un score de quiz."""
-    email = validate_input(email, max_length=255)
-    course = validate_input(course, max_length=255)
-    
-    logger.info(f"Saving score for {email}: {score}/{total} on {course}")
-    with db_context() as conn:
-        c = conn.cursor()
-        date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-        c.execute("INSERT INTO history (email, course, score, total, date) VALUES (?, ?, ?, ?, ?)", 
-                  (email, course, score, total, date_str))
-        conn.commit()
+    """Sauvegarde un score dans history.csv."""
+    email = email.lower()
+    date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    history_file = os.path.join(DATA_DIR, "history.csv")
+    with open(history_file, "a", encoding="utf-8") as f:
+        f.write(f"{email},{course},{score},{total},{date_str}\n")
 
 def db_get_best_score(email, course):
-    """Récupère le meilleur score pour un cours donné."""
-    email = validate_input(email, max_length=255)
-    course = validate_input(course, max_length=255)
+    """Récupère le meilleur score depuis history.csv."""
+    email = email.lower()
+    history_file = os.path.join(DATA_DIR, "history.csv")
+    if not os.path.exists(history_file): return "N/A"
     
-    with db_context() as conn:
-        c = conn.cursor()
-        c.execute("SELECT MAX(score), total FROM history WHERE email = ? AND course = ?", (email, course))
-        res = c.fetchone()
-    
-    if res and res[0] is not None:
-        return f"{res[0]} / {res[1]}"
+    best = -1
+    total_val = 0
+    try:
+        df = pd.read_csv(history_file)
+        filtered = df[(df['email'] == email) & (df['course'] == course)]
+        if not filtered.empty:
+            max_row = filtered.loc[filtered['score'].idxmax()]
+            return f"{max_row['score']} / {max_row['total']}"
+    except: pass
     return "N/A"
 
-import json
-
 def db_save_progress(email, module_name, current_idx, answers):
-    """Sauvegarde la progression dans un quiz."""
-    email = validate_input(email, max_length=255)
-    module_name = validate_input(module_name, max_length=255)
+    """Sauvegarde la progression dans progress.json."""
+    email = email.lower()
+    progress_file = os.path.join(DATA_DIR, "progress.json")
+    progress = {}
+    if os.path.exists(progress_file):
+        try:
+            with open(progress_file, "r", encoding="utf-8") as f:
+                progress = json.load(f)
+        except: pass
     
-    logger.info(f"Saving progress for {email} on {module_name} at index {current_idx}")
-    with db_context() as conn:
-        c = conn.cursor()
-        ans_json = json.dumps(answers)
-        date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-        c.execute("INSERT OR REPLACE INTO quiz_progress (email, module_name, current_idx, answers_json, last_updated) VALUES (?, ?, ?, ?, ?)",
-                  (email, module_name, current_idx, ans_json, date_str))
-        conn.commit()
+    key = f"{email}|{module_name}"
+    progress[key] = {
+        "current_idx": current_idx,
+        "answers": answers,
+        "last_updated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    }
+    with open(progress_file, "w", encoding="utf-8") as f:
+        json.dump(progress, f)
 
 def db_load_progress(email, module_name):
-    """Charge la progression d'un quiz."""
-    email = validate_input(email, max_length=255)
-    module_name = validate_input(module_name, max_length=255)
+    """Charge la progression depuis progress.json."""
+    email = email.lower()
+    progress_file = os.path.join(DATA_DIR, "progress.json")
+    if not os.path.exists(progress_file): return None
     
-    with db_context() as conn:
-        c = conn.cursor()
-        c.execute("SELECT current_idx, answers_json FROM quiz_progress WHERE email = ? AND module_name = ?", (email, module_name))
-        res = c.fetchone()
-    
-    if res:
-        return {"idx": res[0], "answers": json.loads(res[1])}
+    try:
+        with open(progress_file, "r", encoding="utf-8") as f:
+            progress = json.load(f)
+        key = f"{email}|{module_name}"
+        if key in progress:
+            return {"idx": progress[key]["current_idx"], "answers": progress[key]["answers"]}
+    except: pass
     return None
 
 def db_clear_progress(email, module_name):
-    """Supprime la progression d'un quiz."""
-    email = validate_input(email, max_length=255)
-    module_name = validate_input(module_name, max_length=255)
+    """Supprime la progression."""
+    email = email.lower()
+    progress_file = os.path.join(DATA_DIR, "progress.json")
+    if not os.path.exists(progress_file): return
     
-    logger.info(f"Clearing progress for {email} on {module_name}")
-    with db_context() as conn:
-        c = conn.cursor()
-        c.execute("DELETE FROM quiz_progress WHERE email = ? AND module_name = ?", (email, module_name))
-        conn.commit()
+    try:
+        with open(progress_file, "r", encoding="utf-8") as f:
+            progress = json.load(f)
+        key = f"{email}|{module_name}"
+        if key in progress:
+            del progress[key]
+            with open(progress_file, "w", encoding="utf-8") as f:
+                json.dump(progress, f)
+    except: pass
 
 def db_save_module(name, category, m_type, content):
-    """Sauvegarde ou met à jour un module éducatif."""
-    name = validate_input(name, max_length=255)
-    category = validate_input(category, max_length=100)
-    m_type = validate_input(m_type, max_length=10)
-    content = validate_input(content, max_length=500000, allow_html=True)  # Large limit for content
+    """Sauvegarde le module comme un fichier CSV dans le dossier modules."""
+    cat_dir = os.path.join(MODULES_DIR, category)
+    if not os.path.exists(cat_dir):
+        os.makedirs(cat_dir)
     
-    logger.info(f"Saving module: {name} ({m_type}) in category {category}")
-    with db_context() as conn:
-        c = conn.cursor()
-        date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-        # Vérifie si c'est un update (même nom et même catégorie)
-        c.execute("SELECT id FROM educational_modules WHERE name = ? AND category = ?", (name, category))
-        res = c.fetchone()
-        if res:
-            c.execute("UPDATE educational_modules SET content = ?, type = ?, created_at = ? WHERE id = ?", 
-                      (content, m_type, date_str, res[0]))
-        else:
-            c.execute("INSERT INTO educational_modules (name, category, type, content, created_at) VALUES (?, ?, ?, ?, ?)",
-                      (name, category, m_type, content, date_str))
-        conn.commit()
+    # Nettoyer le nom pour le fichier
+    safe_name = re.sub(r'[^\w\s-]', '', name).strip().replace(' ', '_')
+    filename = f"{safe_name}_{m_type}.csv"
+    filepath = os.path.join(cat_dir, filename)
+    
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(content)
+    logger.info(f"Module sauvé : {filepath}")
 
 def db_get_modules(m_type=None, search="", limit=None, offset=0):
-    """Récupère les modules avec options de pagination."""
-    search = validate_input(search, max_length=100)
+    """Récupère les modules en scannant le dossier modules."""
+    modules = []
+    if not os.path.exists(MODULES_DIR): return []
     
-    with db_context() as conn:
-        c = conn.cursor()
-        query = "SELECT id, name, category, type, content, created_at FROM educational_modules WHERE 1=1"
-        params = []
+    for root, dirs, files in os.walk(MODULES_DIR):
+        category = os.path.basename(root)
+        if category == "modules": category = "Général"
         
-        if m_type:
-            m_type_val = validate_input(m_type, max_length=10)
-            query += " AND type = ?"
-            params.append(m_type_val)
-        
-        if search:
-            query += " AND (name LIKE ? OR category LIKE ?)"
-            params.extend([f"%{search}%", f"%{search}%"])
-        
-        query += " ORDER BY created_at DESC"
-        
-        if limit:
-            query += " LIMIT ? OFFSET ?"
-            params.extend([limit, offset])
-        
-        c.execute(query, params)
-        rows = c.fetchall()
+        for file in files:
+            if file.endswith(".csv"):
+                # Parse type from filename: Name_TYPE.csv
+                parts = file.rsplit('_', 1)
+                name = parts[0].replace('_', ' ')
+                ext_type = parts[1].replace('.csv', '') if len(parts) > 1 else "QCM"
+                
+                if m_type and ext_type != m_type: continue
+                if search and not (search.lower() in name.lower() or search.lower() in category.lower()):
+                    continue
+                
+                filepath = os.path.join(root, file)
+                try:
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        content = f.read()
+                    mod_time = os.path.getmtime(filepath)
+                    date_str = datetime.datetime.fromtimestamp(mod_time).strftime("%Y-%m-%d %H:%M")
+                    modules.append((file, name, category, ext_type, content, date_str))
+                except: pass
+                
+    # Sort and paginate
+    modules.sort(key=lambda x: x[5], reverse=True)
+    if offset: modules = modules[offset:]
+    if limit: modules = modules[:limit]
     
-    return rows
+    return modules
 
 def db_count_modules(m_type=None, search=""):
-    """Compte le nombre total de modules pour la pagination."""
-    with db_context() as conn:
-        c = conn.cursor()
-        query = "SELECT COUNT(*) FROM educational_modules WHERE 1=1"
-        params = []
-        if m_type:
-            query += " AND type = ?"
-            params.append(m_type)
-        if search:
-            query += " AND (name LIKE ? OR category LIKE ?)"
-            params.extend([f"%{search}%", f"%{search}%"])
-        c.execute(query, params)
-        return c.fetchone()[0]
+    """Compte les fichiers CSV."""
+    return len(db_get_modules(m_type, search))
 
-def db_delete_module(m_id):
-    """Supprime un module par son ID."""
-    logger.info(f"Deleting module ID: {m_id}")
-    with db_context() as conn:
-        c = conn.cursor()
-        c.execute("DELETE FROM educational_modules WHERE id = ?", (m_id,))
-        conn.commit()
+def db_delete_module(m_filename):
+    """Supprime le fichier correspondant."""
+    # Attention: ici m_id est le nom du fichier
+    for root, dirs, files in os.walk(MODULES_DIR):
+        if m_filename in files:
+            os.remove(os.path.join(root, m_filename))
+            return
 
 def db_get_history(email):
-    """Récupère l'historique des scores pour un utilisateur."""
-    email = validate_input(email, max_length=255)
+    """Récupère l'historique depuis history.csv."""
+    history_file = os.path.join(DATA_DIR, "history.csv")
+    if not os.path.exists(history_file): return pd.DataFrame()
     
-    with db_context() as conn:
-        df = pd.read_sql_query(
-            "SELECT date as Date, course as Examen, CAST(score AS TEXT) || ' / ' || CAST(total AS TEXT) as Score FROM history WHERE email = ? ORDER BY id DESC", 
-            conn, 
-            params=(email,)
-        )
-    return df
+    try:
+        df = pd.read_csv(history_file)
+        df_user = df[df['email'] == email.lower()].copy()
+        df_user['Score'] = df_user['score'].astype(str) + " / " + df_user['total'].astype(str)
+        df_user = df_user.rename(columns={"date": "Date", "course": "Examen"})
+        return df_user[["Date", "Examen", "Score"]].sort_index(ascending=False)
+    except:
+        return pd.DataFrame()
 
 def db_export_all_user_data(email):
-    """Exporte toutes les données utilisateur (RGPD compliant)."""
-    email = validate_input(email, max_length=255)
-    data = {}
+    """Exporte history et progress."""
+    email = email.lower()
+    history = []
+    history_file = os.path.join(DATA_DIR, "history.csv")
+    if os.path.exists(history_file):
+        try:
+            df = pd.read_csv(history_file)
+            history = df[df['email'] == email].to_dict('records')
+        except: pass
     
-    with db_context() as conn:
-        # User info
-        user_df = pd.read_sql_query("SELECT * FROM users WHERE email = ?", conn, params=(email,))
-        data['user_info'] = user_df.to_dict('records')
-        
-        # History
-        history_df = pd.read_sql_query("SELECT * FROM history WHERE email = ?", conn, params=(email,))
-        data['quiz_history'] = history_df.to_dict('records')
-        
-        # Progress
-        progress_df = pd.read_sql_query("SELECT * FROM quiz_progress WHERE email = ?", conn, params=(email,))
-        data['quiz_progress'] = progress_df.to_dict('records')
-    
-    return data
-
-def create_bulk_export_zip():
-    """Crée un ZIP avec tous les modules de la BD."""
-    modules = db_get_modules()
-    if not modules:
-        return None
-    
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        for m_id, m_name, m_cat, m_type, m_content, m_date in modules:
-            # Safe filename
-            safe_name = re.sub(r'[^\w\s-]', '', m_name).strip().replace(' ', '_')
-            filename = f"{m_cat}/{safe_name}_{m_type}.txt"
-            zip_file.writestr(filename, m_content)
-            
-            # Also add HTML export
-            html_content = generate_export_html(m_content, m_name, m_type)
-            html_filename = f"{m_cat}/{safe_name}_{m_type}.html"
-            zip_file.writestr(html_filename, html_content)
-    
-    zip_buffer.seek(0)
-    return zip_buffer.getvalue()
+    return {"history": history}
 
 def get_user_recommendations(email, limit=3):
-    """Recommande des modules basés sur les performances de l'utilisateur."""
-    email = validate_input(email, max_length=255)
-    
-    with db_context() as conn:
-        # Récupère l'historique de l'utilisateur
-        df = pd.read_sql_query(
-            "SELECT course, AVG(CAST(score AS FLOAT) / CAST(total AS FLOAT)) as avg_score FROM history WHERE email = ? GROUP BY course",
-            conn,
-            params=(email,)
-        )
-    
-    if df.empty:
-        # Pas d'historique, recommander des modules populaires
-        all_modules = db_get_modules(m_type="QCM", limit=limit)
-        return [(m[1], "Nouveau module suggéré", m[2]) for m in all_modules]
-    
-    # Trouver les modules avec score < 70%
-    weak_modules = df[df['avg_score'] < 0.7]['course'].tolist()
-    
-    if weak_modules:
-        recommendations = [(m, f"Score moyen: {int(df[df['course']==m]['avg_score'].iloc[0]*100)}%", "À améliorer") 
-                          for m in weak_modules[:limit]]
-        return recommendations
-    
-    # Sinon, recommander de nouveaux modules
-    completed = df['course'].tolist()
+    """Recommandations simples basées sur les fichiers."""
     all_qcms = db_get_modules(m_type="QCM")
-    new_modules = [m for m in all_qcms if m[1] not in completed][:limit]
-    
-    return [(m[1], "Non encore essayé", m[2]) for m in new_modules]
+    return [(m[1], "Disponible", m[2]) for m in all_qcms[:limit]]
 
 # Initialize DB on load
 init_db()
 
 # --- FONCTIONS UTILES ---
 def convert_html_to_pdf(source_html):
-    """Convertit le HTML en PDF bytes via pdfkit."""
+    """Convertit le HTML en PDF bytes via pdfkit. Fallback si binaire non trouvé."""
     try:
-        config = pdfkit.configuration(wkhtmltopdf=r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe")
-        pdf_bytes = pdfkit.from_string(source_html, False, configuration=config)
-        return pdf_bytes
+        # Tentative de trouver wkhtmltopdf
+        path_wkhtmltopdf = r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe'
+        if not os.path.exists(path_wkhtmltopdf):
+            path_wkhtmltopdf = shutil.which("wkhtmltopdf")
+        
+        if path_wkhtmltopdf:
+            config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
+            return pdfkit.from_string(source_html, False, configuration=config)
+        else:
+            # Sur Streamlit Cloud, il devrait être dans le PATH via packages.txt
+            return pdfkit.from_string(source_html, False)
     except Exception as e:
-        st.error(f"Erreur PDF : {e}")
+        logger.error(f"Erreur PDF : {e}")
+        st.warning(f"⚠️ PDF impossible : {e}. Assurez-vous que wkhtmltopdf est installé.")
         return None
 
 def generate_diploma(name, score, total, course_title):
@@ -1133,35 +1043,6 @@ def generate_result_report(questions, user_answers, score, title, identity=None,
 </body></html>"""
     return html
 
-# --- PERSISTENCE JS ---
-def inject_persistence_js():
-    st.components.v1.html("""
-    <script>
-    const saveState = () => {
-        const answers = window.parent.document.querySelectorAll('input[type="radio"]:checked');
-        const data = {};
-        answers.forEach(input => {
-            data[input.name] = input.value;
-        });
-        localStorage.setItem('qcm_persistence', JSON.stringify(data));
-    };
-    window.parent.document.addEventListener('change', saveState);
-    </script>
-    """, height=0)
-
-def load_persistence_js():
-    st.components.v1.html("""
-    <script>
-    const data = localStorage.getItem('qcm_persistence');
-    if (data) {
-        // This is tricky in Streamlit as we can't easily send data back to Python session_state 
-        // without a custom component or a specific trigger.
-        // For now, we will notify the user that recovery is available.
-        console.log("Persistence data found:", data);
-    }
-    </script>
-    """, height=0)
-
 # --- PAGE FUNCTIONS ---
 
 def page_pdf_transformer():
@@ -1355,7 +1236,6 @@ def page_quiz():
         shuffle_o = st.toggle("Mélanger les options", value=True)
     
     st.header("⚡ Mode Quiz Flash Interactif")
-    inject_persistence_js()
     
     # Handle pre-loaded module from Explorer or Resume logic
     if "auto_load_csv" in st.session_state and st.session_state.auto_load_csv:
