@@ -1986,14 +1986,21 @@ def page_discover():
                             st.session_state.current_page = "👁️ Visualiseur"
                             st.rerun()
                     
-                    # Download buttons
-                    if m_type != "SUM":
-                        html_code = generate_export_html(m_content, m_name, m_type)
-                        ac2.download_button("📥 HTML", data=html_code, file_name=f"{m_name}.html", mime="text/html", key=f"dl_{m_id}")
-                    else:
-                        html_code = generate_export_html(m_content, m_name, "SUM")
-                        ac2.download_button("📥 HTML", data=html_code, file_name=f"{m_name}.html", mime="text/html", key=f"dl_{m_id}")
-                    st.write("")
+                    # --- Multi-format Exports ---
+                    with st.expander("📥 Télécharger", expanded=False):
+                        d_col1, d_col2, d_col3 = st.columns(3)
+                        # CSV
+                        d_col1.download_button("CSV", m_content, f"{m_name}.csv", key=f"expl_csv_{m_id}")
+                        # HTML
+                        html_exp = generate_export_html(m_content, m_name, m_type)
+                        d_col2.download_button("HTML", html_exp, f"{m_name}.html", key=f"expl_html_{m_id}")
+                        # PDF
+                        pdf_exp = convert_html_to_pdf(html_exp)
+                        if pdf_exp:
+                            d_col3.download_button("PDF", pdf_exp, f"{m_name}.pdf", key=f"expl_pdf_{m_id}")
+                        else:
+                            d_col3.disabled = True
+                            d_col3.caption("PDF X")
     
     # Pagination controls
     st.divider()
@@ -2152,8 +2159,15 @@ def page_admin_crud():
                         st.success("Supprimé !")
                         st.rerun()
                     
+                    # --- Multi-format Exports Admin ---
+                    st.divider()
+                    ad_c1, ad_c2, ad_c3 = st.columns(3)
+                    ad_c1.download_button("📥 CSV", mcont, f"{mname}.csv", key=f"adm_csv_{mid}")
                     html_code = generate_export_html(mcont, mname, mtype)
-                    c3.download_button("📥 EXPORT HTML", data=html_code, file_name=f"{mname}.html", key=f"dl_admin_{mid}")
+                    ad_c2.download_button("📥 HTML", data=html_code, file_name=f"{mname}.html", key=f"adm_html_{mid}")
+                    pdf_code = convert_html_to_pdf(html_code)
+                    if pdf_code:
+                        ad_c3.download_button("📥 PDF", data=pdf_code, file_name=f"{mname}.pdf", key=f"adm_pdf_{mid}")
 
 def page_summaries():
     # Ancienne page maintenue pour compatibilité ou simplifiée
