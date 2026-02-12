@@ -125,15 +125,20 @@ def validate_csv_data(csv_text, q_type):
     f = io.StringIO(csv_text.strip())
     reader = csv.reader(f, delimiter='|')
     
-    # Check header
+    # Check header and identify columns
     header = next(reader, None)
     if not header:
         return ["Le fichier est vide."], []
+    
+    ans_col_idx = -1
+    if header:
+        for j, col in enumerate(header):
+            if col.strip().upper() in ["RÉPONSE", "REPONSE", "ANSWER"]:
+                ans_col_idx = j
+                break
 
     for i, row in enumerate(reader, 1):
         if not any(row): continue # Skip empty lines
-        
-        # Skip header if next(reader) didn't catch it or if it repeats
         if str(row[0]).strip().lower() in ["question", "titre"]: continue
         
         if q_type == "QCM Classique":
@@ -141,42 +146,35 @@ def validate_csv_data(csv_text, q_type):
                 errors.append(f"Ligne {i} : Colonnes insuffisantes ({len(row)}/7 minimum).")
                 continue
             
-            # Check options vs answer
-            # Super Robust parsing: Find the Answer column by pattern matching
-            q_text = row[0].strip()
+            # Identify Answer Column
+            ans_idx = ans_col_idx
+            if ans_idx == -1 or ans_idx >= len(row):
+                # Robust fallback: Search from right to left
+                ans_pattern = re.compile(r'^[A-Z]([;, ]{0,2}[A-Z])*$')
+                search_limit = min(len(row) - 1, 11)
+                for j in range(search_limit, 1, -1):
+                    val = row[j].strip().upper()
+                    if val and len(val) <= 15 and ans_pattern.match(val):
+                        ans_idx = j
+                        break
+                if ans_idx == -1: ans_idx = max(1, len(row) - 2)
             
-            # Match A or A;B or A B but NOT long words without separators
-            ans_pattern = re.compile(r'^[A-Z]([;, ]{0,2}[A-Z])*$')
+            raw_ans = row[ans_idx].strip().upper()
+            if raw_ans in ["RÉPONSE", "REPONSE", "ANSWER"]: continue
             
-            ans_idx = -1
-            # Search from right to left to favor the answer column (usually near the end)
-            search_limit = min(len(row) - 1, 11)
-            for j in range(search_limit, 1, -1):
-                val = row[j].strip().upper()
-                if val and len(val) <= 15 and ans_pattern.match(val):
-                    ans_idx = j
-                    break
-            
-            # Fallback if no pattern found (last but one as before)
-            if ans_idx == -1:
-                ans_idx = max(1, len(row) - 2)
-            
-            ans = row[ans_idx].strip().upper()
-            if ans in ["RÉPONSE", "REPONSE", "ANSWER"]: continue
-            
-            expl = "|".join(row[ans_idx+1:]) # Join all trailing columns as explanation
             opts = [o.strip() for o in row[1:ans_idx] if o.strip()]
             num_opts = len(opts)
             lets = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[:num_opts]
             
-            if not ans:
-                errors.append(f"Ligne {i} : Réponse manquante.")
-            else:
-                # Clean answer from common delimiters
-                clean_ans = ans.replace(',', '').replace(' ', '').replace(';', '').replace(':', '')
-                for char in clean_ans:
-                    if char not in lets:
-                        errors.append(f"Ligne {i} : La réponse '{char}' n'est pas cohérente avec les {num_opts} options fournies.")
+            # PREFIX-BASED EXTRACTION: Take letters until first dirty char
+            ans_clean = ""
+            for char in raw_ans:
+                if char in lets: ans_clean += char
+                elif char in [';', ',', ' ', ':', '.', '/', '?']: continue
+                else: break # Stop at first non-answer character
+            
+            if not ans_clean:
+                errors.append(f"Ligne {i} : Réponse '{raw_ans[:10]}' invalide pour {num_opts} options.")
         
         elif q_type in ["Questions / Réponses", "Glossaire (Concept | Définition)"]:
             if len(row) < 2:
@@ -796,10 +794,16 @@ def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Exame
     import random
     f = io.StringIO(csv_text)
     reader = csv.reader(f, delimiter='|')
-    next(reader, None) # Skip header
+    header = next(reader, None)
+    
+    ans_col_idx = -1
+    if header:
+        for j, col in enumerate(header):
+            if col.strip().upper() in ["RÉPONSE", "REPONSE", "ANSWER"]:
+                ans_col_idx = j
+                break
     
     raw_questions = []
-    
     if q_type in ["Questions / Réponses", "Glossaire (Concept | Définition)"]:
         for row in reader:
             if len(row) < 2: continue
@@ -815,23 +819,32 @@ def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Exame
             if len(row) < 7: continue
             q_text = row[0].strip()
             
-            # Super Robust Detection
-            ans_pattern = re.compile(r'^[A-Z]([;, ]{0,2}[A-Z])*$')
-            ans_idx = -1
-            search_limit = min(len(row) - 1, 11)
-            for j in range(search_limit, 1, -1):
-                val = row[j].strip().upper()
-                if val and len(val) <= 15 and ans_pattern.match(val):
-                    ans_idx = j
-                    break
-            if ans_idx == -1: ans_idx = max(1, len(row) - 2)
+            # Identify Answer Column
+            ans_idx = ans_col_idx
+            if ans_idx == -1 or ans_idx >= len(row):
+                ans_pattern = re.compile(r'^[A-Z]([;, ]{0,2}[A-Z])*$')
+                search_limit = min(len(row) - 1, 11)
+                for j in range(search_limit, 1, -1):
+                    val = row[j].strip().upper()
+                    if val and len(val) <= 15 and ans_pattern.match(val):
+                        ans_idx = j
+                        break
+                if ans_idx == -1: ans_idx = max(1, len(row) - 2)
             
             opts_text = [o.strip() for o in row[1:ans_idx] if o.strip()]
-            ans = row[ans_idx].strip().upper()
+            raw_ans_val = row[ans_idx].strip().upper()
             expl = "|".join(row[ans_idx+1:])
             
             lets = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'][:len(opts_text)]
-            correct_indices = [lets.index(l) for l in ans if l in lets]
+            
+            # Robust answer extraction
+            ans_clean = ""
+            for char in raw_ans_val:
+                if char in lets: ans_clean += char
+                elif char in [';', ',', ' ', ':', '.', '/', '?']: continue
+                else: break
+            
+            correct_indices = [lets.index(l) for l in ans_clean if l in lets]
             
             raw_questions.append({
                 'text': q_text,
@@ -1176,7 +1189,15 @@ def generate_export_html(content, title, m_type, **kwargs):
         return generate_html_content(content, title, use_columns=True)
 
 def perform_stats(csv_text):
-    f = io.StringIO(csv_text); reader = csv.reader(f, delimiter='|'); next(reader, None)
+    f = io.StringIO(csv_text); reader = csv.reader(f, delimiter='|'); header = next(reader, None)
+    
+    ans_col_idx = -1
+    if header:
+        for j, col in enumerate(header):
+            if col.strip().upper() in ["RÉPONSE", "REPONSE", "ANSWER"]:
+                ans_col_idx = j
+                break
+
     total, single, multi, all_ans = 0, 0, 0, []
     for row in reader:
         if not row or not any(row): continue
@@ -1184,49 +1205,82 @@ def perform_stats(csv_text):
         if len(row) < 7: continue
         total += 1
         
-        # Robust answer detection
-        ans_pattern = re.compile(r'^[A-Z]([;, ]{0,2}[A-Z])*$')
-        ans_idx = -1
-        search_limit = min(len(row) - 1, 11)
-        for j in range(search_limit, 1, -1):
-            val = row[j].strip().upper()
-            if val and len(val) <= 15 and ans_pattern.match(val):
-                ans_idx = j
-                break
-        if ans_idx == -1: ans_idx = max(1, len(row) - 2)
+        # Identify Answer Column
+        ans_idx = ans_col_idx
+        if ans_idx == -1 or ans_idx >= len(row):
+            ans_pattern = re.compile(r'^[A-Z]([;, ]{0,2}[A-Z])*$')
+            search_limit = min(len(row) - 1, 11)
+            for j in range(search_limit, 1, -1):
+                val = row[j].strip().upper()
+                if val and len(val) <= 15 and ans_pattern.match(val):
+                    ans_idx = j
+                    break
+            if ans_idx == -1: ans_idx = max(1, len(row) - 2)
         
-        ans_raw = str(row[ans_idx]).strip().upper()
-        ans = ans_raw.replace(',', '').replace(' ', '').replace(';', '').replace(':', '')
+        opts = [o.strip() for o in row[1:ans_idx] if o.strip()]
+        num_opts = len(opts)
+        lets = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[:num_opts]
+        
+        raw_ans = str(row[ans_idx]).strip().upper()
+        # Extract valid letters
+        ans = ""
+        for char in raw_ans:
+            if char in lets: ans += char
+            elif char in [';', ',', ' ', ':', '.', '/', '?']: continue
+            else: break
+            
         if len(ans) > 1: multi += 1
         else: single += 1
         for char in ans:
-            if char in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ': all_ans.append(char)
+            if char in lets: all_ans.append(char)
     counts = Counter(all_ans); total_ans = len(all_ans) if all_ans else 1
     dist = {k: (v/total_ans * 100) for k, v in counts.items()}
     return total, single, multi, dist
 
 def parse_csv(text):
-    f = io.StringIO(text); reader = csv.reader(f, delimiter='|'); next(reader, None)
+    f = io.StringIO(text); reader = csv.reader(f, delimiter='|'); header = next(reader, None)
+    
+    ans_col_idx = -1
+    if header:
+        for j, col in enumerate(header):
+            if col.strip().upper() in ["RÉPONSE", "REPONSE", "ANSWER"]:
+                ans_col_idx = j
+                break
+
     data = []
     for row in reader:
         if not row or not any(row): continue
         if str(row[0]).strip().lower() in ["question", "titre"]: continue
         if len(row) < 7: continue
         
-        ans_pattern = re.compile(r'^[A-Z]([;, ]{0,2}[A-Z])*$')
-        ans_idx = -1
-        search_limit = min(len(row) - 1, 11)
-        for j in range(search_limit, 1, -1):
-            val = row[j].strip().upper()
-            if val and len(val) <= 15 and ans_pattern.match(val):
-                ans_idx = j
-                break
-        if ans_idx == -1: ans_idx = max(1, len(row) - 2)
+        # Identify Answer Column
+        ans_idx = ans_col_idx
+        if ans_idx == -1 or ans_idx >= len(row):
+            ans_pattern = re.compile(r'^[A-Z]([;, ]{0,2}[A-Z])*$')
+            search_limit = min(len(row) - 1, 11)
+            for j in range(search_limit, 1, -1):
+                val = row[j].strip().upper()
+                if val and len(val) <= 15 and ans_pattern.match(val):
+                    ans_idx = j
+                    break
+            if ans_idx == -1: ans_idx = max(1, len(row) - 2)
 
+        opts = [o.strip() for o in row[1:ans_idx] if o.strip()]
+        num_opts = len(opts)
+        lets = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[:num_opts]
+        
+        raw_ans = row[ans_idx].strip().upper()
+        # Robust answer extraction
+        ans_clean = ""
+        for char in raw_ans:
+            if char in lets: ans_clean += char
+            elif char in [';', ',', ' ', ':', '.', '/', '?']: continue
+            else: break
+            
         q = {
             'text': row[0].strip(),
-            'opts': [o.strip() for o in row[1:ans_idx] if o.strip()],
-            'ans': row[ans_idx].strip().replace(' ', '').replace(',', '').replace(';', '').replace(':', '').upper(),
+            'opts': opts,
+            'ans': ans_clean,
             'expl': "|".join(row[ans_idx+1:])
         }
         data.append(q)
