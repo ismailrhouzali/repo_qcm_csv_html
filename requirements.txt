@@ -3,5 +3,8 @@ pandas
 pdfkit
 PyPDF2
 pytesseract
+pdf2image
 Pillow
 python-docx
+xlsxwriter
+openpyxl
