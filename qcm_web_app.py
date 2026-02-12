@@ -1951,13 +1951,47 @@ def page_summaries():
                 st.session_state.current_page = "👁️ Visualiseur"
                 st.rerun()
 
+def page_guide_ia():
+    st.header("💡 Guide Complet : Génération par IA")
+    
+    st.markdown("""
+    ### 🎨 L'Art du Prompting pour QCM Master Pro
+    Pour obtenir des QCM parfaits, suivez ces principes avec votre IA (ChatGPT, Claude, etc.) :
+    
+    #### 1. Le Format Strict (CSV)
+    L'IA **doit** renvoyer un format délimité par `|` (pipe). 
+    Exemple de ligne attendue :
+    `Quelle est la capitale de la France ?|Paris|Lyon|Marseille|Bordeaux|Lille|Toulouse|A|Paris est la capitale depuis des siècles.`
+
+    #### 2. Configuration recommandée
+    * **Rôle** : Commencez par *"Tu es un expert en pédagogie universitaire."*
+    * **Contrainte** : Ajoutez *"Ne fournis que le code CSV, pas de texte avant ou après."*
+    * **Qualité** : Demandez *"Génère des distracteurs (mauvaises réponses) plausibles et difficiles."*
+    
+    #### 3. Workflow Optimal
+    1. Utilisez l'**Extracteur PDF** (page précédente) pour obtenir le texte de votre cours.
+    2. Copiez le prompt généré automatiquement.
+    3. Donnez-le à l'IA.
+    4. Copiez le résultat de l'IA.
+    5. Allez dans le **Créateur** et collez le texte.
+    6. Enregistrez dans la base de données avec le suffixe `_QCM.csv`.
+
+    #### 4. Suffixes Magiques
+    Le système détecte le type de page selon le nom du fichier :
+    * `_QCM.csv` ➡️ Active les statistiques et les corrigés interactifs.
+    * `_QA.csv` ➡️ Active le mode Question/Réponse simple.
+    * `_SUM.md` ➡️ Affiche un résumé structuré en Markdown.
+    """)
+    
+    st.success("🎯 Astuce : Utilisez Claude 3.5 Sonnet ou GPT-4o pour les meilleurs résultats en français.")
+
 # --- MAIN NAVIGATION ---
 if "current_page" not in st.session_state:
     st.session_state.current_page = "📄 PDF Transformer"
 
 with st.sidebar:
     st.title("🚀 Navigation")
-    pages = ["📄 PDF Transformer", "✍️ Créateur", "🔍 Explorer", "📚 Résumés", "⚡ Quiz Interactif", "📊 Historique", "⚙️ Gestion BD", "👁️ Visualiseur"]
+    pages = ["📄 PDF Transformer", "✍️ Créateur", "🔍 Explorer", "📚 Résumés", "⚡ Quiz Interactif", "📊 Historique", "💡 Guide IA", "⚙️ Gestion BD", "👁️ Visualiseur"]
     # Hide Visualizer from direct selectbox if not active
     nav_pages = [p for p in pages if p != "👁️ Visualiseur" or st.session_state.current_page == "👁️ Visualiseur"]
     
@@ -1974,5 +2008,6 @@ elif st.session_state.current_page == "🔍 Explorer": page_discover()
 elif st.session_state.current_page == "📚 Résumés": page_summaries()
 elif st.session_state.current_page == "⚡ Quiz Interactif": page_quiz()
 elif st.session_state.current_page == "📊 Historique": page_history()
+elif st.session_state.current_page == "💡 Guide IA": page_guide_ia()
 elif st.session_state.current_page == "⚙️ Gestion BD": page_admin_crud()
 elif st.session_state.current_page == "👁️ Visualiseur": page_visualizer()
