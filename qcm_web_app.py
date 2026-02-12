@@ -143,7 +143,7 @@ def validate_csv_data(csv_text, q_type):
             q_text = row[0].strip()
             
             # Pattern for Answer: letters A-F, possibly separated by ; , : or space
-            ans_pattern = re.compile(r'^[A-F]([;,: ]*[A-F])*$')
+            ans_pattern = re.compile(r'^[A-Z]([;,: ]*[A-Z])*$')
             
             ans_idx = -1
             # Search for answer between index 2 and a reasonable limit (e.g., 7 for 6 options)
@@ -761,7 +761,7 @@ def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Exame
             q_text = row[0].strip()
             
             # Super Robust Detection
-            ans_pattern = re.compile(r'^[A-F]([;,: ]*[A-F])*$')
+            ans_pattern = re.compile(r'^[A-Z]([;,: ]*[A-Z])*$')
             ans_idx = -1
             for j in range(2, min(len(row), 8)):
                 val = row[j].strip().upper()
@@ -1127,7 +1127,7 @@ def perform_stats(csv_text):
         total += 1
         
         # Robust answer detection
-        ans_pattern = re.compile(r'^[A-F]([;,: ]*[A-F])*$')
+        ans_pattern = re.compile(r'^[A-Z]([;,: ]*[A-Z])*$')
         ans_idx = -1
         for j in range(2, min(len(row), 8)):
             val = row[j].strip().upper()
