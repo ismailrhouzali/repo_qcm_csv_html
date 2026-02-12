@@ -17,6 +17,7 @@ import json
 import shutil
 import hashlib
 from contextlib import contextmanager
+from streamlit_option_menu import option_menu
 
 # --- ADVANCED LIBS ---
 import PyPDF2
@@ -2311,23 +2312,47 @@ def page_favorites():
                 db_toggle_favorite(email, f['module'], f['text'], f['opts'], f['ans'], f['expl'])
                 st.rerun()
 
-# --- MAIN NAVIGATION ---
+# --- MAIN NAVIGATION (NAVBAR) ---
+pages_config = {
+    "📄 PDF Transformer": {"icon": "file-earmark-pdf"},
+    "📄 PDF Merger": {"icon": "file-earmark-zip"},
+    "✍️ Créateur": {"icon": "pencil-square"},
+    "🔍 Explorer": {"icon": "search"},
+    "📚 Résumés": {"icon": "book"},
+    "⚡ Quiz Interactif": {"icon": "lightning"},
+    "⭐ Mes Favoris": {"icon": "star"},
+    "📊 Historique": {"icon": "clock-history"},
+    "💡 Guide IA": {"icon": "robot"},
+    "⚙️ Gestion BD": {"icon": "gear"}
+}
+
+# If in visualizer mode, add it temporarily
+current_pages = list(pages_config.keys())
+if st.session_state.get("current_page") == "👁️ Visualiseur":
+    current_pages.append("👁️ Visualiseur")
+
 if "current_page" not in st.session_state:
     st.session_state.current_page = "📄 PDF Transformer"
 
-with st.sidebar:
-    st.title("🚀 Navigation")
-    pages = ["📄 PDF Transformer", "📄 PDF Merger", "✍️ Créateur", "🔍 Explorer", "📚 Résumés", "⚡ Quiz Interactif", "⭐ Mes Favoris", "📊 Historique", "💡 Guide IA", "⚙️ Gestion BD", "👁️ Visualiseur"]
-    # Hide Visualizer from direct selectbox if not active
-    nav_pages = [p for p in pages if p != "👁️ Visualiseur" or st.session_state.current_page == "👁️ Visualiseur"]
-    
-    idx = 0
-    if st.session_state.current_page in nav_pages:
-        idx = nav_pages.index(st.session_state.current_page)
-        
-    choice = st.selectbox("Aller vers :", nav_pages, index=idx)
-    st.session_state.current_page = choice
+# Render Horizontal Navbar
+selected = option_menu(
+    menu_title=None,
+    options=current_pages,
+    icons=[pages_config.get(p, {"icon": "eye"})["icon"] for p in current_pages],
+    menu_icon="cast",
+    default_index=current_pages.index(st.session_state.current_page) if st.session_state.current_page in current_pages else 0,
+    orientation="horizontal",
+    styles={
+        "container": {"padding": "0!important", "background-color": "#fafafa"},
+        "icon": {"color": "#27ae60", "font-size": "14px"}, 
+        "nav-link": {"font-size": "12px", "text-align": "left", "margin": "0px", "--hover-color": "#eee"},
+        "nav-link-selected": {"background-color": "#27ae60"},
+    }
+)
 
+st.session_state.current_page = selected
+
+# --- Execute Page ---
 if st.session_state.current_page == "📄 PDF Transformer": page_pdf_transformer()
 elif st.session_state.current_page == "📄 PDF Merger": page_pdf_merger()
 elif st.session_state.current_page == "✍️ Créateur": page_creator()
