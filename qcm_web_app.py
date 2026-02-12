@@ -2286,7 +2286,7 @@ def page_admin_crud():
                             
                             scaled_pdf = convert_html_to_pdf(html_code, zoom=f_z)
                             if scaled_pdf:
-                                st.download_button("⬇️ PDF", scaled_pdf, f"{m_name}.pdf", key=f"am_dl_{mid}", use_container_width=True)
+                                st.download_button("⬇️ PDF", scaled_pdf, f"{mname}.pdf", key=f"am_dl_{mid}", use_container_width=True)
                     else:
                         d3.button("❌", disabled=True, help="PDF non généré", key=f"am_pdf_err_{mid}")
 
