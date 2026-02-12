@@ -191,6 +191,36 @@ def validate_csv_data(csv_text, q_type):
 # Configuration de la page
 st.set_page_config(page_title="QCM Master Pro v4", layout="wide", page_icon="🎯")
 
+# --- CUSTOM CSS: BLANK EXAM THEME ---
+st.markdown("""
+<style>
+    /* Compact Layout */
+    .block-container { padding-top: 1rem; padding-bottom: 0rem; }
+    .stDeployButton { display:none; }
+    
+    /* Exam Paper Look */
+    .exam-container {
+        background-color: #ffffff;
+        padding: 2rem;
+        border-radius: 5px;
+        border: 1px solid #e0e0e0;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        margin-bottom: 1.5rem;
+    }
+    
+    /* Typography */
+    h1, h2, h3 { font-family: 'Georgia', serif; color: #1a1a1a; }
+    .stMarkdown p { font-size: 1.15rem; line-height: 1.6; }
+    
+    /* Condense Widgets */
+    [data-testid="stCheckbox"] { margin-bottom: -10px; }
+    .stButton > button { border-radius: 4px; font-weight: 600; }
+    
+    /* Navbar styling */
+    header { background-color: transparent !important; }
+</style>
+""", unsafe_allow_html=True)
+
 # --- INITIALISATION STATE ---
 if 'quiz_started' not in st.session_state:
     st.session_state.quiz_started = False
@@ -1598,16 +1628,18 @@ def page_quiz():
 
         csv_quiz = st.text_area("Source CSV du Quiz", height=150, value=st.session_state.get("csv_source_input", ""), key="quiz_csv_area")
         
-        st.subheader("👤 Candidat")
-        c1, c2 = st.columns(2)
-        st.session_state.identity["nom"] = c1.text_input("Nom", value=st.session_state.identity["nom"])
-        st.session_state.identity["prenom"] = c2.text_input("Prénom", value=st.session_state.identity["prenom"])
-        st.session_state.identity["id"] = st.text_input("ID", value=st.session_state.identity["id"])
+        # --- COMPACT CANDIDATE INFO ---
+        st.markdown('<div class="exam-container">', unsafe_allow_html=True)
+        st.subheader("👤 Informations Candidat")
+        c1, c2, c3 = st.columns(3)
+        st.session_state.identity["nom"] = c1.text_input("Nom", value=st.session_state.identity["nom"], placeholder="Nom")
+        st.session_state.identity["prenom"] = c2.text_input("Prénom", value=st.session_state.identity["prenom"], placeholder="Prénom")
+        st.session_state.identity["id"] = c3.text_input("Numéro ID", value=st.session_state.identity["id"], placeholder="CNE / ID")
         
         if not st.session_state.identity["verified"]:
-            st.warning("⚠️ Accès restreint. Connectez-vous dans la page 'Historique' (Simulation) pour enregistrer vos scores.")
+            st.caption("ℹ️ Connectez-vous dans 'Historique' pour l'auto-enregistrement des scores.")
 
-        if st.button("🚀 DÉMARRER"):
+        if st.button("🚀 DÉMARRER L'EXAMEN BLANC", type="primary", use_container_width=True):
             if not csv_quiz: st.error("Collez ou chargez un CSV !")
             else:
                 st.session_state.quiz_started = True
@@ -1617,6 +1649,7 @@ def page_quiz():
                 # Identify course name for history
                 mod_name = st.session_state.get("quiz_mod", "Quiz Manuel")
                 st.session_state.current_course_name = mod_name if mod_name != "Choisir..." else "Quiz Manuel"
+        st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Parsing and Shuffling
                 questions = parse_csv(csv_quiz)
@@ -1654,27 +1687,31 @@ def page_quiz():
         
         st.progress((idx + 1) / num_q)
         
-        # --- QUIZ HEADER with EXIT button ---
-        head_c1, head_c2 = st.columns([0.85, 0.15])
-        head_c1.subheader(f"Question {idx+1} / {num_q}")
-        if head_c2.button("🚪 QUITTER", use_container_width=True):
+        # --- EXAM CONTAINER ---
+        st.markdown('<div class="exam-container">', unsafe_allow_html=True)
+        
+        # --- COMPACT HEADER ---
+        head_c1, head_c2, head_c3 = st.columns([0.2, 0.6, 0.2])
+        head_c1.markdown(f"📝 **Q. {idx+1} / {num_q}**")
+        head_c2.markdown(f"<div style='text-align:center; font-style:italic;'>{st.session_state.current_course_name}</div>", unsafe_allow_html=True)
+        if head_c3.button("🚪 QUITTER", use_container_width=True, help="Sortir de l'examen"):
             st.session_state.confirm_exit = True
             st.rerun()
 
         if st.session_state.confirm_exit:
-            st.warning("⚠️ **Confirmer la sortie ?** Votre progression restera sauvegardée localement.")
+            st.warning("⚠️ Confirmer la sortie ?")
             exit_c1, exit_c2 = st.columns(2)
-            if exit_c1.button("✅ OUI, QUITTER", type="primary", use_container_width=True):
+            if exit_c1.button("✅ OUI", type="primary", use_container_width=True):
                 st.session_state.confirm_exit = False
                 st.session_state.quiz_started = False
                 st.rerun()
-            if exit_c2.button("❌ ANNULER", use_container_width=True):
+            if exit_c2.button("❌ NON", use_container_width=True):
                 st.session_state.confirm_exit = False
                 st.rerun()
             st.stop()
-
-        st.write(f"### {q['text']}")
-        st.markdown('---')
+        
+        st.markdown(f"### {q['text']}")
+        st.markdown("<br>", unsafe_allow_html=True) # Subtle spacing
         
         letters = ['A', 'B', 'C', 'D', 'E', 'F'][:len(q['opts'])]
         
@@ -1814,6 +1851,8 @@ def page_quiz():
                             db_save_score(st.session_state.identity["email"], st.session_state.current_course_name, total_score, len(questions))
                             db_clear_progress(st.session_state.identity["email"], st.session_state.current_course_name)
                         st.rerun()
+        
+        st.markdown('</div>', unsafe_allow_html=True) # CLOSE EXAM CONTAINER
 
     if st.session_state.score_submitted:
         score = st.session_state.get('final_score', 0)
