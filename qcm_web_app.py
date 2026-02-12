@@ -15,6 +15,7 @@ import re
 import sqlite3
 import json
 import shutil
+import hashlib
 from contextlib import contextmanager
 
 # --- ADVANCED LIBS ---
@@ -1400,27 +1401,27 @@ def page_creator():
     csv_in = st.text_area("Contenu (|)", height=250, value=default_val)
     st.session_state.csv_source_input = csv_in
     
-    if csv_in:
+    if csv_in and module_title and module_title != "Nouveau Module":
         errors, _ = validate_csv_data(csv_in, q_type)
-        if errors:
+        if not errors:
+            # --- AUTO-SAVE LOGIC ---
+            m_type_db = "QCM"
+            if "Questions" in q_type: m_type_db = "QA"
+            elif "Glossaire" in q_type: m_type_db = "DEF"
+            elif "Synthèse" in q_type: m_type_db = "SUM"
+            
+            # Check for changes to avoid redundant saves
+            current_hash = hashlib.md5(f"{module_title}{csv_in}{m_type_db}".encode()).hexdigest()
+            if st.session_state.get("last_auto_save_hash") != current_hash:
+                try:
+                    db_save_module(module_title, "Général", m_type_db, csv_in)
+                    st.session_state.last_auto_save_hash = current_hash
+                    st.toast(f"✅ Auto-sauvegarde : {module_title}", icon="💾")
+                except Exception as e:
+                    logger.error(f"Erreur auto-save: {e}")
+
+        else:
             for e in errors: st.error(e)
-            
-        with st.expander("💾 Sauvegarder dans la Base de Données", expanded=True):
-            save_name = st.text_input("Nom unique du module", value=module_title)
-            save_cat = "Général"
-            st.info("📂 Catégorie : Général")
-            
-            if st.button("🚀 ENREGISTRER DANS LA BD", type="primary"):
-                m_type = "QCM"
-                if "Questions" in q_type: m_type = "QA"
-                elif "Glossaire" in q_type: m_type = "DEF"
-                elif "Synthèse" in q_type: m_type = "SUM"
-                
-                db_save_module(save_name, save_cat, m_type, csv_in)
-                st.success(f"Module '{save_name}' enregistré avec succès !")
-                # Optionnel: vider pour le prochain
-                # st.session_state.csv_source_input = ""
-                # st.rerun()
 
         # --- STATS ---
         try:
