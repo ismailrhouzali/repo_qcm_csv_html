@@ -145,7 +145,9 @@ def validate_csv_data(csv_text, q_type):
             if not ans:
                 errors.append(f"Ligne {i} : Réponse manquante.")
             else:
-                for char in ans.replace(',', '').replace(' ', ''):
+                # Clean answer from common delimiters
+                clean_ans = ans.replace(',', '').replace(' ', '').replace(';', '').replace(':', '')
+                for char in clean_ans:
                     if char not in lets:
                         errors.append(f"Ligne {i} : La réponse '{char}' n'est pas cohérente avec les {num_opts} options fournies.")
         
@@ -951,7 +953,7 @@ def perform_stats(csv_text):
     for row in reader:
         if len(row) < 7: continue
         total += 1
-        ans = str(row[7] if len(row) >= 9 else row[5]).strip().upper().replace(',', '').replace(' ', '')
+        ans = str(row[7] if len(row) >= 9 else row[5]).strip().upper().replace(',', '').replace(' ', '').replace(';', '').replace(':', '')
         if len(ans) > 1: multi += 1
         else: single += 1
         for char in ans:
@@ -968,11 +970,11 @@ def parse_csv(text):
         q = {'text': row[0].strip()}
         if len(row) >= 9:
             q['opts'] = [row[i].strip() for i in range(1, 7)]
-            q['ans'] = row[7].strip().replace(' ', '').replace(',', '').upper()
+            q['ans'] = row[7].strip().replace(' ', '').replace(',', '').replace(';', '').replace(':', '').upper()
             q['expl'] = row[8].strip()
         else:
             q['opts'] = [row[i].strip() for i in range(1, 5)]
-            q['ans'] = row[5].strip().replace(' ', '').replace(',', '').upper()
+            q['ans'] = row[5].strip().replace(' ', '').replace(',', '').replace(';', '').replace(':', '').upper()
             q['expl'] = row[6].strip()
         data.append(q)
     return data
