@@ -1205,7 +1205,7 @@ def page_pdf_transformer():
             
             st.success(f"✅ Texte extrait ! ({len(pdf_text)} caractères)")
             
-            cleaned_text = " ".join(pdf_text.split())[:15000] # Limite pour les prompts
+            cleaned_text = " ".join(pdf_text.split())[:100000] # Limite augmentée pour les longs documents
             
             st.subheader("⚙️ Configurer l'IA")
             ex_type = st.radio("Type d'exercice souhaité :", 
@@ -1305,6 +1305,55 @@ def page_pdf_transformer():
             """)
         
         st.info(f"💡 **Conseil rapide** : Une fois le contenu généré par l'IA, utilisez l'onglet **'Créateur'** pour l'enregistrer avec le suffixe `{suffix}`.")
+
+def page_pdf_merger():
+    st.header("📄 Fusionneur de PDF (Merger)")
+    st.info("Téléchargez plusieurs PDF et réorganisez-les avant de les fusionner en un seul fichier.")
+    
+    uploaded_files = st.file_uploader("Choisissez vos fichiers PDF", type="pdf", accept_multiple_files=True)
+    
+    if uploaded_files:
+        st.subheader("🔄 Ordre des fichiers")
+        # Interface de tri simplifiée avec st.multiselect
+        filenames = [f.name for f in uploaded_files]
+        ordered_filenames = st.multiselect(
+            "Réorganisez l'ordre (Sélectionnez dans l'ordre voulu) :",
+            filenames,
+            default=filenames,
+            help="L'ordre de sélection déterminera l'ordre dans le PDF final."
+        )
+        
+        if st.button("🚀 Fusionner les PDF", type="primary", use_container_width=True):
+            if not ordered_filenames:
+                st.warning("Veuillez sélectionner au moins un fichier.")
+                return
+                
+            try:
+                merger = PyPDF2.PdfMerger()
+                # Map ordered names back to file objects
+                file_map = {f.name: f for f in uploaded_files}
+                
+                with st.spinner("Fusion en cours..."):
+                    for name in ordered_filenames:
+                        # Reset file pointer to beginning before reading
+                        file_map[name].seek(0)
+                        merger.append(io.BytesIO(file_map[name].read()))
+                    
+                    output = io.BytesIO()
+                    merger.write(output)
+                    merger.close()
+                    
+                    st.success("✅ Fusion terminée !")
+                    st.download_button(
+                        label="📥 Télécharger le PDF fusionné",
+                        data=output.getvalue(),
+                        file_name="fusion_combinee.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
+            except Exception as e:
+                st.error(f"Erreur lors de la fusion : {e}")
+                logger.error(f"Erreur PDF Merger: {e}")
 
 def page_creator():
     st.header("✍️ Créateur de Contenu (HTML/PDF)")
@@ -2220,7 +2269,7 @@ if "current_page" not in st.session_state:
 
 with st.sidebar:
     st.title("🚀 Navigation")
-    pages = ["📄 PDF Transformer", "✍️ Créateur", "🔍 Explorer", "📚 Résumés", "⚡ Quiz Interactif", "⭐ Mes Favoris", "📊 Historique", "💡 Guide IA", "⚙️ Gestion BD", "👁️ Visualiseur"]
+    pages = ["📄 PDF Transformer", "📄 PDF Merger", "✍️ Créateur", "🔍 Explorer", "📚 Résumés", "⚡ Quiz Interactif", "⭐ Mes Favoris", "📊 Historique", "💡 Guide IA", "⚙️ Gestion BD", "👁️ Visualiseur"]
     # Hide Visualizer from direct selectbox if not active
     nav_pages = [p for p in pages if p != "👁️ Visualiseur" or st.session_state.current_page == "👁️ Visualiseur"]
     
@@ -2232,6 +2281,7 @@ with st.sidebar:
     st.session_state.current_page = choice
 
 if st.session_state.current_page == "📄 PDF Transformer": page_pdf_transformer()
+elif st.session_state.current_page == "📄 PDF Merger": page_pdf_merger()
 elif st.session_state.current_page == "✍️ Créateur": page_creator()
 elif st.session_state.current_page == "🔍 Explorer": page_discover()
 elif st.session_state.current_page == "📚 Résumés": page_summaries()
