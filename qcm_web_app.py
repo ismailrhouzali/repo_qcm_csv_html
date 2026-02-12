@@ -1573,24 +1573,11 @@ def page_quiz():
 
         selected = []
         if not st.session_state.validated_current:
-            is_multi = len(q['ans']) > 1
-            if is_multi:
-                st.caption("*(Plusieurs réponses possibles)*")
-                for i, l in enumerate(letters):
-                    prev_val = l in st.session_state.user_answers.get(idx, "")
-                    if st.checkbox(f"{l}. {q['opts'][i]}", key=f"q{idx}_{l}", value=prev_val):
-                        selected.append(l)
-            else:
-                prev_idx = None
-                current_ans = st.session_state.user_answers.get(idx, "")
-                if current_ans:
-                    try: prev_idx = letters.index(current_ans)
-                    except: pass
-                
-                choice = st.radio(f"Selection Q{idx+1}", 
-                                 [f"{l}. {q['opts'][i]}" for i, l in enumerate(letters)],
-                                 index=prev_idx, key=f"q{idx}", label_visibility="collapsed")
-                if choice: selected = [choice[0]]
+            # Force uniform checkbox interface for all questions
+            for i, l in enumerate(letters):
+                prev_val = l in st.session_state.user_answers.get(idx, "")
+                if st.checkbox(f"{l}. {q['opts'][i]}", key=f"q{idx}_{l}", value=prev_val):
+                    selected.append(l)
             
             st.session_state.user_answers[idx] = "".join(sorted(selected))
         else:
