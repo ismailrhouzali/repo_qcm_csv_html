@@ -19,6 +19,7 @@ import hashlib
 from contextlib import contextmanager
 from streamlit_option_menu import option_menu
 import markdown
+import tempfile
 
 # --- ADVANCED LIBS ---
 import PyPDF2
@@ -534,6 +535,19 @@ def generate_diploma(name, score, total, course_title):
     </html>
     """
     return convert_html_to_pdf(html_diploma)
+
+def open_local_html(content, title, m_type):
+    """Génère un fichier HTML temporaire et l'ouvre dans le navigateur local."""
+    try:
+        html_str = generate_export_html(content, title, m_type)
+        with tempfile.NamedTemporaryFile('w', delete=False, suffix='.html', encoding='utf-8') as f:
+            f.write(html_str)
+            tmp_path = f.name
+        webbrowser.open(f"file://{os.path.abspath(tmp_path)}")
+        return True
+    except Exception as e:
+        logger.error(f"Erreur preview HTML: {e}")
+        return False
 
 def generate_answer_sheet(num_questions):
     """Génère une feuille de cochage propre sur 3 colonnes"""
@@ -1987,6 +2001,12 @@ def page_discover():
                                 st.rerun()
                         else:
                             if ac1.button("👁️ Voir", key=f"view_{m_id}", use_container_width=True):
+                                # Open directly in local browser
+                                if open_local_html(m_content, m_name, m_type):
+                                    st.toast(f"🌐 Ouverture de l'aperçu : {m_name}")
+                                else:
+                                    st.error("Impossible d'ouvrir l'aperçu HTML local.")
+                                # We still set the view_content for the internal visualizer as fallback
                                 st.session_state.view_content = {"name": m_name, "content": m_content, "type": m_type}
                                 st.session_state.current_page = "👁️ Visualiseur"
                                 st.rerun()
