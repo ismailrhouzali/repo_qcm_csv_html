@@ -13,6 +13,7 @@ from datetime import timedelta
 import logging
 import re
 import sqlite3
+import json
 from contextlib import contextmanager
 
 # --- ADVANCED LIBS ---
@@ -1653,18 +1654,31 @@ def page_quiz():
                         st.session_state.quiz_started = False
                         st.session_state.score_submitted = True
                         
-                        # Recalculate score
-                        score = 0
+                        # Recalculate score with partial credits
                         questions = st.session_state.shuffled_questions
+                        total_score = 0.0
                         for i, q_data in enumerate(questions):
-                            if st.session_state.user_answers.get(i, "") == q_data['ans']:
-                                score += 1
+                            u_ans = st.session_state.user_answers.get(i, "")
+                            correct_ans = q_data['ans']
+                            
+                            if u_ans == correct_ans:
+                                total_score += 1.0
+                            elif len(correct_ans) > 1: # Partial scoring for multi-choice
+                                # Formula: max(0, (Corrects_choisis - Incorrects_choisis) / Total_Corrects)
+                                set_correct = set(correct_ans)
+                                set_user = set(u_ans)
+                                
+                                correct_chosen = len(set_user.intersection(set_correct))
+                                incorrect_chosen = len(set_user.difference(set_correct))
+                                
+                                q_score = max(0.0, (correct_chosen - incorrect_chosen) / len(set_correct))
+                                total_score += q_score
                         
-                        st.session_state.final_score = score
+                        st.session_state.final_score = total_score
                         st.session_state.final_total = len(questions)
                         
                         if st.session_state.identity["verified"]:
-                            db_save_score(st.session_state.identity["email"], st.session_state.current_course_name, score, len(questions))
+                            db_save_score(st.session_state.identity["email"], st.session_state.current_course_name, total_score, len(questions))
                             db_clear_progress(st.session_state.identity["email"], st.session_state.current_course_name)
                         st.rerun()
 
@@ -1675,7 +1689,7 @@ def page_quiz():
         st.balloons()
         st.markdown(f"""
             <div style="text-align:center; padding:30px; background:#f0f7f4; border-radius:15px; border:2px solid #27ae60; margin-bottom: 20px;">
-                <h1 style="color:#27ae60; margin:0;">SCORE FINAL : {score} / {num_q}</h1>
+                <h1 style="color:#27ae60; margin:0;">SCORE FINAL : {score:.1f} / {num_q}</h1>
                 <p style="font-size:16pt;">Candidat : <strong>{st.session_state.identity['prenom']} {st.session_state.identity['nom']}</strong></p>
                 <p style="font-size:14pt;">Taux de réussite : <strong>{(score/num_q*100):.1f}%</strong></p>
             </div>
@@ -1696,6 +1710,8 @@ def page_quiz():
                     use_container_width=True
                 )
 
+        # --- RESULTS & PDF REPORT ---
+        questions = st.session_state.get('shuffled_questions', [])
         result_html = generate_result_report(questions, st.session_state.user_answers, score, "Examen Officiel", 
                                              identity=st.session_state.identity, 
                                              cheat_warnings=st.session_state.cheat_warnings)
@@ -2180,7 +2196,7 @@ def page_favorites():
     st.header("⭐ Mes Questions Favorites")
     st.info("Retrouvez ici les questions que vous avez marquées pour révision.")
     
-    email = st.session_state.get('user_email', 'anonyme')
+    email = st.session_state.identity.get("email", "anonyme")
     favs = db_get_favorites(email)
     
     if not favs:
