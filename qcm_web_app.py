@@ -2076,7 +2076,7 @@ def page_discover():
                                 with d_col3.popover("⚙️"):
                                     st.write("🔧 PDF Master")
                                     zoom_val = st.slider("Zoom", 0.5, 2.0, 1.0, 0.1, key=f"zoom_{m_id}")
-                                    target_p = st.number_input("Pages visées", 1, 10, 0, key=f"p_{m_id}", help="0 pour auto")
+                                    target_p = st.number_input("Pages visées", 0, 10, 0, key=f"p_{m_id}", help="0 pour auto")
                                     
                                     # Heuristic: if target_p > 0, we adjust zoom
                                     # (very rough estimate: 1 page ~= 1.0 zoom for typical 20q QCM)
@@ -2265,7 +2265,7 @@ def page_admin_crud():
                         with d3.popover("⚙️"):
                             st.write("🔧 PDF Master")
                             z_val = st.slider("Zoom", 0.5, 2.0, 1.0, 0.1, key=f"am_z_{mid}")
-                            t_p = st.number_input("Pages visées", 1, 10, 0, key=f"am_p_{mid}", help="0 pour auto")
+                            t_p = st.number_input("Pages visées", 0, 10, 0, key=f"am_p_{mid}", help="0 pour auto")
                             
                             f_z = z_val
                             if t_p > 0:
