@@ -1178,23 +1178,293 @@ def generate_sum_html(content, title):
 </body>
 </html>"""
 
+    return html
+
+def generate_js_quiz_html(content, title):
+    """Génère un QCM interactif Standalone avec JS, Stockage Local et Scoring Partiel."""
+    questions = parse_csv(content)
+    import json
+    q_json = json.dumps(questions, ensure_ascii=False)
+    
+    html = f"""<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title} - Quiz Interactif</title>
+    <style>
+        :root {{
+            --primary: #2563eb;
+            --success: #059669;
+            --danger: #dc2626;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text: #1e293b;
+            --border: #e2e8f0;
+        }}
+        body {{
+            font-family: 'Georgia', serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
+        }}
+        header {{
+            background: var(--card-bg);
+            padding: 1rem 2rem;
+            border-bottom: 2px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }}
+        .container {{
+            max-width: 800px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }}
+        h1 {{ font-size: 1.5rem; margin: 0; color: var(--primary); }}
+        .score-box {{ font-weight: bold; font-size: 1.25rem; color: var(--success); }}
+        .card {{
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+            transition: transform 0.2s;
+        }}
+        .question-text {{ font-size: 1.3rem; font-weight: bold; margin-bottom: 1.5rem; }}
+        .options {{ display: flex; flex-direction: column; gap: 0.75rem; }}
+        .option {{
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }}
+        .option:hover {{ background-color: #f1f5f9; }}
+        .option.selected {{ border-color: var(--primary); background-color: #eff6ff; }}
+        .option input {{ transform: scale(1.3); }}
+        
+        .btn {{
+            display: inline-block;
+            background: var(--primary);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            border: none;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 1.5rem;
+            transition: opacity 0.2s;
+        }}
+        .btn:disabled {{ opacity: 0.5; cursor: not-allowed; }}
+        .btn:hover:not(:disabled) {{ opacity: 0.9; }}
+        
+        .feedback {{
+            margin-top: 1.5rem;
+            padding: 1rem;
+            border-radius: 8px;
+            display: none;
+        }}
+        .feedback.correct {{ background: #d1fae5; color: #065f46; border-left: 4px solid var(--success); }}
+        .feedback.incorrect {{ background: #fee2e2; color: #991b1b; border-left: 4px solid var(--danger); }}
+        
+        .correct-opt {{ background-color: #d1fae5 !important; border-color: var(--success) !important; }}
+        .incorrect-opt {{ background-color: #fee2e2 !important; border-color: var(--danger) !important; }}
+        
+        .explanation {{ font-style: italic; margin-top: 0.5rem; font-size: 0.95rem; }}
+        
+        .progress-bar-container {{
+            width: 100%;
+            height: 8px;
+            background: var(--border);
+            border-radius: 4px;
+            margin-top: 1rem;
+            overflow: hidden;
+        }}
+        .progress-bar {{
+            height: 100%;
+            background: var(--success);
+            width: 0%;
+            transition: width 0.3s;
+        }}
+    </style>
+</head>
+<body>
+    <header>
+        <div>
+            <h1>{title}</h1>
+            <div class="progress-bar-container"><div id="progress" class="progress-bar"></div></div>
+        </div>
+        <div class="score-box">Score: <span id="current-score">0.0</span> / <span id="total-q">0</span></div>
+    </header>
+
+    <div class="container" id="quiz-container">
+        <!-- Questions will be injected here -->
+    </div>
+
+    <script>
+        const questions = {q_json};
+        const title = "{title}";
+        const storageKey = "qcm_js_progress_" + btoa(unescape(encodeURIComponent(title)));
+        
+        let state = {{
+            score: 0,
+            answered: {{}}, // index -> {{ selected: [], score: 0 }}
+        }};
+
+        // Load progress
+        const saved = localStorage.getItem(storageKey);
+        if (saved) {{
+            state = JSON.parse(saved);
+        }}
+
+        const container = document.getElementById('quiz-container');
+        document.getElementById('total-q').textContent = questions.length;
+
+        function updateGlobalUI() {{
+            const answeredCount = Object.keys(state.answered).length;
+            document.getElementById('progress').style.width = (answeredCount / questions.length * 100) + '%';
+            document.getElementById('current-score').textContent = state.score.toFixed(1);
+        }}
+
+        function renderQuiz() {{
+            container.innerHTML = '';
+            questions.forEach((q, idx) => {{
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.id = 'q-' + idx;
+                
+                const isAnswered = state.answered[idx] !== undefined;
+                const userSelected = isAnswered ? state.answered[idx].selected : (window.tempSelections && window.tempSelections[idx] ? window.tempSelections[idx] : []);
+
+                let optionsHtml = '';
+                q.opts.forEach((opt, oIdx) => {{
+                    const letter = String.fromCharCode(65 + oIdx);
+                    let optClass = 'option';
+                    if (isAnswered) {{
+                        if (q.ans.includes(letter)) optClass += ' correct-opt';
+                        else if (userSelected.includes(letter)) optClass += ' incorrect-opt';
+                    }} else if (userSelected.includes(letter)) {{
+                        optClass += ' selected';
+                    }}
+
+                    optionsHtml += `
+                        <div class="${{optClass}}" onclick="toggleOption(${{idx}}, '${{letter}}')">
+                            <input type="checkbox" id="q${{idx}}o${{oIdx}}" 
+                                ${{userSelected.includes(letter) ? 'checked' : ''}} 
+                                ${{isAnswered ? 'disabled' : ''}}>
+                            <span>${{letter}}. ${{opt}}</span>
+                        </div>
+                    `;
+                }});
+
+                card.innerHTML = `
+                    <div class="question-text">Q${{idx + 1}}. ${{q.text}}</div>
+                    <div class="options">${{optionsHtml}}</div>
+                    <button class="btn" id="btn-${{idx}}" 
+                        onclick="validateQuestion(${{idx}})"
+                        ${{isAnswered || userSelected.length === 0 ? 'disabled' : ''}}>
+                        Valider
+                    </button>
+                    <div class="feedback ${{isAnswered ? (state.answered[idx].score > 0 ? 'correct' : 'incorrect') : ''}}" 
+                        style="display: ${{isAnswered ? 'block' : 'none'}}">
+                        <strong>${{isAnswered ? (state.answered[idx].score === 1 ? 'Correct !' : (state.answered[idx].score > 0 ? 'Partiellement correct' : 'Incorrect')) : ''}}</strong>
+                        <div class="explanation">💡 ${{q.expl}}</div>
+                    </div>
+                `;
+                container.appendChild(card);
+            }});
+            updateGlobalUI();
+        }}
+
+        window.toggleOption = function(qIdx, letter) {{
+            if (state.answered[qIdx]) return;
+            
+            if (!window.tempSelections) window.tempSelections = {{}};
+            if (!window.tempSelections[qIdx]) window.tempSelections[qIdx] = [];
+            
+            const idx = window.tempSelections[qIdx].indexOf(letter);
+            if (idx > -1) window.tempSelections[qIdx].splice(idx, 1);
+            else window.tempSelections[qIdx].push(letter);
+            
+            // Update UI state
+            const card = document.getElementById('q-' + qIdx);
+            const btn = document.getElementById('btn-' + qIdx);
+            btn.disabled = window.tempSelections[qIdx].length === 0;
+            
+            // Visual toggle
+            const opts = card.querySelectorAll('.option');
+            opts.forEach((o, i) => {{
+                const l = String.fromCharCode(65 + i);
+                if (window.tempSelections[qIdx].includes(l)) o.classList.add('selected');
+                else o.classList.remove('selected');
+                o.querySelector('input').checked = window.tempSelections[qIdx].includes(l);
+            }});
+        }};
+
+        window.validateQuestion = function(idx) {{
+            const selected = window.tempSelections ? window.tempSelections[idx] : [];
+            if (!selected || selected.length === 0) return;
+
+            const correctAnswers = questions[idx].ans.split('');
+            let points = 0;
+            
+            let correctFound = 0;
+            let wrongFound = 0;
+            
+            selected.forEach(l => {{
+                if (correctAnswers.includes(l)) correctFound++;
+                else wrongFound++;
+            }});
+            
+            // Scoring logic: 1/N for each correct, penalty for wrong
+            points = (correctFound / correctAnswers.length) - (wrongFound * 0.5);
+            points = Math.max(0, points);
+            if (points > 0.99) points = 1; // Rounding
+            
+            state.answered[idx] = {{
+                selected: selected,
+                score: points
+            }};
+            state.score += points;
+            
+            localStorage.setItem(storageKey, JSON.stringify(state));
+            renderQuiz();
+            
+            const next = document.getElementById('q-' + (idx + 1));
+            if (next) next.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+        }};
+
+        renderQuiz();
+    </script>
+</body>
+</html>"""
+    return html
+
 def generate_export_html(content, title, m_type, **kwargs):
     """Dispatche vers le bon template HTML selon le type de contenu."""
-    if m_type == "QCM":
-        return generate_html_content(content, title, use_columns=kwargs.get('use_columns', True), 
-                                    add_qr=kwargs.get('add_qr', True), mode=kwargs.get('mode', 'Examen'),
-                                    shuffle_q=kwargs.get('shuffle_q', False), shuffle_o=kwargs.get('shuffle_o', False),
-                                    q_type="QCM Classique", add_sheet=kwargs.get('add_sheet', True))
-    elif m_type == "QA":
-        return generate_html_content(content, title, use_columns=kwargs.get('use_columns', False),
-                                    q_type="Questions / Réponses", open_all=kwargs.get('open_all', False))
-    elif m_type == "DEF":
-        return generate_html_content(content, title, use_columns=kwargs.get('use_columns', False),
-                                    q_type="Glossaire (Concept | Définition)")
-    elif m_type == "SUM":
+    if m_type == "QCM JS Interactif":
+        return generate_js_quiz_html(content, title)
+    elif m_type == "QCM Classique":
+        return generate_html_content(content, title, **kwargs)
+    elif m_type == "Questions / Réponses":
+        return generate_qa_html(content, title)
+    elif m_type == "Glossaire (Concept | Définition)":
+        return generate_def_html(content, title)
+    elif m_type == "Synthèse MD (Style Pro)":
         return generate_sum_html(content, title)
-    else:
-        return generate_html_content(content, title, use_columns=True)
+    return ""
 
 def perform_stats(csv_text):
     f = io.StringIO(csv_text); reader = csv.reader(f, delimiter='|'); header = next(reader, None)
@@ -1569,9 +1839,10 @@ def page_creator():
             if module_title and module_title != "Nouveau Module" and st.session_state.get("csv_source_input"):
                 try:
                     m_type_db = "QCM"
-                    if "Questions" in st.session_state.get('editing_type', ''): m_type_db = "QA"
-                    elif "Glossaire" in st.session_state.get('editing_type', ''): m_type_db = "DEF"
-                    elif "Synthèse" in st.session_state.get('editing_type', ''): m_type_db = "SUM"
+                    if "Interactive" in q_type or "JS" in q_type: m_type_db = "QCM_JS"
+                    elif "Questions" in q_type: m_type_db = "QA"
+                    elif "Glossaire" in q_type: m_type_db = "DEF"
+                    elif "Synthèse" in q_type: m_type_db = "SUM"
                     
                     db_save_module(module_title, "Général", m_type_db, st.session_state.csv_source_input)
                     st.toast(f"✅ Module enregistré : {module_title}", icon="💾")
@@ -1583,8 +1854,8 @@ def page_creator():
         # out_name and doc_title are now the same
         out_name = module_title
         doc_title = module_title
-        q_type = st.radio("Type", ["QCM Classique", "Questions / Réponses", "Glossaire (Concept | Définition)", "Synthèse (Markdown)"],
-                          index=["QCM Classique", "Questions / Réponses", "Glossaire (Concept | Définition)", "Synthèse (Markdown)"].index(st.session_state.get('editing_type', "QCM Classique")))
+        q_type = st.radio("Type", ["QCM Classique", "QCM JS Interactif", "Questions / Réponses", "Glossaire (Concept | Définition)", "Synthèse (Markdown)"],
+                          index=["QCM Classique", "QCM JS Interactif", "Questions / Réponses", "Glossaire (Concept | Définition)", "Synthèse (Markdown)"].index(st.session_state.get('editing_type', "QCM Classique")))
         html_mode = st.radio("Style", ["Examen", "Révision"])
         c1, c2 = st.columns(2)
         shuffle_q = c1.checkbox("Mélanger Q", value=False)
@@ -2138,12 +2409,12 @@ def page_discover():
                 with cols[idx % 2]:
                     best = "N/A"
                     progress = False
-                    if m_type == "QCM" and st.session_state.identity["verified"]:
+                    if m_type in ["QCM", "QCM_JS"] and st.session_state.identity["verified"]:
                         best = db_get_best_score(st.session_state.identity["email"], m_name)
                         p_data = db_load_progress(st.session_state.identity["email"], m_name)
                         if p_data: progress = True
                     
-                    icons = {"QCM": "⚡", "QA": "❓", "DEF": "📜", "SUM": "📝"}
+                    icons = {"QCM": "⚡", "QCM_JS": "🕹️", "QA": "❓", "DEF": "📜", "SUM": "📝"}
                     icon = icons.get(m_type, "📄")
 
                     with st.container():
@@ -2156,7 +2427,7 @@ def page_discover():
 </div>
 </div>
 <div>
-{f'<span class="best-score">🏆 Record : {best}</span>' if m_type == "QCM" else ""}
+{f'<span class="best-score">🏆 Record : {best}</span>' if m_type in ["QCM", "QCM_JS"] else ""}
 {"<span class='in-progress'>⏳ En cours</span>" if progress else ""}
 </div>
 </div>"""
@@ -2164,7 +2435,7 @@ def page_discover():
                         
                         # Actions directly below card content but visually inside
                         ac1, ac2 = st.columns(2)
-                        if m_type == "QCM":
+                        if m_type in ["QCM", "QCM_JS"]:
                             if ac1.button("🚀 Lancer", key=f"launch_{m_id}", use_container_width=True):
                                 st.session_state.auto_load_csv = m_content
                                 st.session_state.quiz_mod = m_name
