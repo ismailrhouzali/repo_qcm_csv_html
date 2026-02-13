@@ -1180,7 +1180,7 @@ def generate_sum_html(content, title):
 
     return html
 
-def generate_js_quiz_html(content, title):
+def generate_js_quiz_html(content, title, timer_seconds=0):
     """Génère un QCM interactif Standalone avec JS, Stockage Local et Scoring Partiel."""
     questions = parse_csv(content)
     import json
@@ -1212,7 +1212,7 @@ def generate_js_quiz_html(content, title):
         }}
         header {{
             background: var(--card-bg);
-            padding: 1rem 2rem;
+            padding: 0.8rem 1.5rem;
             border-bottom: 2px solid var(--border);
             position: sticky;
             top: 0;
@@ -1220,60 +1220,62 @@ def generate_js_quiz_html(content, title):
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
         }}
+        .header-left {{ display: flex; flex-direction: column; gap: 4px; }}
+        .header-right {{ display: flex; align-items: center; gap: 20px; }}
+        
         .container {{
             max-width: 800px;
-            margin: 2rem auto;
+            margin: 1.5rem auto;
             padding: 0 1rem;
         }}
-        h1 {{ font-size: 1.5rem; margin: 0; color: var(--primary); }}
-        .score-box {{ font-weight: bold; font-size: 1.25rem; color: var(--success); }}
+        h1 {{ font-size: 1.3rem; margin: 0; color: var(--primary); }}
+        .score-box {{ font-weight: bold; font-size: 1.15rem; color: var(--success); }}
+        .timer-box {{ font-weight: bold; font-size: 1.15rem; color: var(--danger); min-width: 80px; }}
+        
         .card {{
             background: var(--card-bg);
             border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 2rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
-            transition: transform 0.2s;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.2rem;
+            box-shadow: none; /* No shadow as requested */
         }}
-        .question-text {{ font-size: 1.3rem; font-weight: bold; margin-bottom: 1.5rem; }}
-        .options {{ display: flex; flex-direction: column; gap: 0.75rem; }}
+        .question-text {{ font-size: 1.2rem; font-weight: bold; margin-bottom: 1rem; }}
+        .options {{ display: flex; flex-direction: column; gap: 0.5rem; }}
         .option {{
             display: flex;
             align-items: center;
             gap: 1rem;
-            padding: 1rem;
+            padding: 0.8rem;
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 6px;
             cursor: pointer;
             transition: all 0.2s;
         }}
         .option:hover {{ background-color: #f1f5f9; }}
         .option.selected {{ border-color: var(--primary); background-color: #eff6ff; }}
-        .option input {{ transform: scale(1.3); }}
+        .option input {{ transform: scale(1.1); }}
         
         .btn {{
             display: inline-block;
             background: var(--primary);
             color: white;
-            padding: 0.75rem 1.5rem;
-            border-radius: 6px;
+            padding: 0.6rem 1.2rem;
+            border-radius: 4px;
             border: none;
-            font-size: 1rem;
+            font-size: 0.95rem;
             font-weight: bold;
             cursor: pointer;
-            margin-top: 1.5rem;
-            transition: opacity 0.2s;
+            margin-top: 1.2rem;
         }}
+        .btn-reset {{ background: #94a3b8; margin-top: 0; margin-left: 10px; padding: 0.4rem 0.8rem; }}
         .btn:disabled {{ opacity: 0.5; cursor: not-allowed; }}
-        .btn:hover:not(:disabled) {{ opacity: 0.9; }}
         
         .feedback {{
-            margin-top: 1.5rem;
+            margin-top: 1.2rem;
             padding: 1rem;
-            border-radius: 8px;
+            border-radius: 6px;
             display: none;
         }}
         .feedback.correct {{ background: #d1fae5; color: #065f46; border-left: 4px solid var(--success); }}
@@ -1282,14 +1284,13 @@ def generate_js_quiz_html(content, title):
         .correct-opt {{ background-color: #d1fae5 !important; border-color: var(--success) !important; }}
         .incorrect-opt {{ background-color: #fee2e2 !important; border-color: var(--danger) !important; }}
         
-        .explanation {{ font-style: italic; margin-top: 0.5rem; font-size: 0.95rem; }}
+        .explanation {{ font-style: italic; margin-top: 0.5rem; font-size: 0.9rem; }}
         
         .progress-bar-container {{
             width: 100%;
-            height: 8px;
+            height: 6px;
             background: var(--border);
-            border-radius: 4px;
-            margin-top: 1rem;
+            border-radius: 3px;
             overflow: hidden;
         }}
         .progress-bar {{
@@ -1302,31 +1303,37 @@ def generate_js_quiz_html(content, title):
 </head>
 <body>
     <header>
-        <div>
+        <div class="header-left">
             <h1>{title}</h1>
             <div class="progress-bar-container"><div id="progress" class="progress-bar"></div></div>
         </div>
-        <div class="score-box">Score: <span id="current-score">0.0</span> / <span id="total-q">0</span></div>
+        <div class="header-right">
+            {f'<div class="timer-box" id="timer">--:--</div>' if timer_seconds > 0 else ''}
+            <div class="score-box">Score: <span id="current-score">0.0</span> / <span id="total-q">0</span></div>
+            <button class="btn btn-reset" onclick="resetProgress()">🔄 Reset</button>
+        </div>
     </header>
 
-    <div class="container" id="quiz-container">
-        <!-- Questions will be injected here -->
-    </div>
+    <div class="container" id="quiz-container"></div>
 
     <script>
         const questions = {q_json};
         const title = "{title}";
+        const hasTimer = {str(timer_seconds > 0).lower()};
+        let timeLeft = {timer_seconds};
         const storageKey = "qcm_js_progress_" + btoa(unescape(encodeURIComponent(title)));
         
         let state = {{
             score: 0,
-            answered: {{}}, // index -> {{ selected: [], score: 0 }}
+            answered: {{}},
+            timeLeft: {timer_seconds}
         }};
 
         // Load progress
         const saved = localStorage.getItem(storageKey);
         if (saved) {{
             state = JSON.parse(saved);
+            if (state.timeLeft !== undefined) timeLeft = state.timeLeft;
         }}
 
         const container = document.getElementById('quiz-container');
@@ -1389,21 +1396,15 @@ def generate_js_quiz_html(content, title):
         }}
 
         window.toggleOption = function(qIdx, letter) {{
-            if (state.answered[qIdx]) return;
-            
+            if (state.answered[qIdx] || state.timeUp) return;
             if (!window.tempSelections) window.tempSelections = {{}};
             if (!window.tempSelections[qIdx]) window.tempSelections[qIdx] = [];
-            
             const idx = window.tempSelections[qIdx].indexOf(letter);
             if (idx > -1) window.tempSelections[qIdx].splice(idx, 1);
             else window.tempSelections[qIdx].push(letter);
-            
-            // Update UI state
             const card = document.getElementById('q-' + qIdx);
             const btn = document.getElementById('btn-' + qIdx);
             btn.disabled = window.tempSelections[qIdx].length === 0;
-            
-            // Visual toggle
             const opts = card.querySelectorAll('.option');
             opts.forEach((o, i) => {{
                 const l = String.fromCharCode(65 + i);
@@ -1414,37 +1415,59 @@ def generate_js_quiz_html(content, title):
         }};
 
         window.validateQuestion = function(idx) {{
+            if (state.timeUp) return;
             const selected = window.tempSelections ? window.tempSelections[idx] : [];
             if (!selected || selected.length === 0) return;
-
             const correctAnswers = questions[idx].ans.split('');
-            let points = 0;
-            
-            let correctFound = 0;
-            let wrongFound = 0;
-            
+            let correctFound = 0; let wrongFound = 0;
             selected.forEach(l => {{
                 if (correctAnswers.includes(l)) correctFound++;
                 else wrongFound++;
             }});
-            
-            // Scoring logic: 1/N for each correct, penalty for wrong
-            points = (correctFound / correctAnswers.length) - (wrongFound * 0.5);
-            points = Math.max(0, points);
-            if (points > 0.99) points = 1; // Rounding
-            
-            state.answered[idx] = {{
-                selected: selected,
-                score: points
-            }};
+            let points = (correctFound / correctAnswers.length) - (wrongFound * 0.5);
+            points = Math.max(0, points); if (points \u003e 0.99) points = 1;
+            state.answered[idx] = {{ selected: selected, score: points }};
             state.score += points;
-            
             localStorage.setItem(storageKey, JSON.stringify(state));
             renderQuiz();
-            
-            const next = document.getElementById('q-' + (idx + 1));
-            if (next) next.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
         }};
+        
+        window.resetProgress = function() {{
+            if (confirm("Voulez-vous vraiment réinitialiser ce quiz ?")) {{
+                localStorage.removeItem(storageKey);
+                location.reload();
+            }}
+        }};
+
+        function revealAll() {{
+            state.timeUp = true;
+            questions.forEach((q, idx) => {{
+                if (state.answered[idx] === undefined) {{
+                    state.answered[idx] = {{ selected: [], score: 0 }};
+                }}
+            }});
+            localStorage.setItem(storageKey, JSON.stringify(state));
+            renderQuiz();
+        }}
+
+        if (hasTimer && !state.timeUp) {{
+            const timerEl = document.getElementById('timer');
+            const interval = setInterval(() => {{
+                state.timeLeft--;
+                const m = Math.floor(state.timeLeft / 60);
+                const s = state.timeLeft % 60;
+                timerEl.textContent = `${{m.toString().padStart(2, '0')}}:${{s.toString().padStart(2, '0')}}`;
+                if (state.timeLeft <= 0) {{
+                    clearInterval(interval);
+                    revealAll();
+                }} else {{
+                    localStorage.setItem(storageKey, JSON.stringify(state));
+                }}
+            }}, 1000);
+        }} else if (state.timeUp) {{
+            const timerEl = document.getElementById('timer');
+            if(timerEl) timerEl.textContent = "00:00";
+        }}
 
         renderQuiz();
     </script>
@@ -1456,7 +1479,7 @@ def generate_export_html(content, title, m_type, **kwargs):
     """Dispatche vers le bon template HTML selon le type de contenu. Supporte les types BD (shorthand) et UI (longhand)."""
     # JS Quiz
     if m_type in ["QCM JS Interactif", "QCM_JS"]:
-        return generate_js_quiz_html(content, title)
+        return generate_js_quiz_html(content, title, timer_seconds=kwargs.get('timer_seconds', 0))
     # QCM Classique
     elif m_type in ["QCM Classique", "QCM"]:
         return generate_html_content(content, title, **kwargs)
@@ -1866,6 +1889,13 @@ def page_creator():
         doc_title = module_title
         
         html_mode = st.radio("Style", ["Examen", "Révision"])
+        
+        timer_active = st.checkbox("⏱️ Activer Minuteur", value=False)
+        timer_seconds = 0
+        if timer_active:
+            timer_min = st.number_input("Minutes", 1, 120, 15)
+            timer_seconds = timer_min * 60
+
         c1, c2 = st.columns(2)
         shuffle_q = c1.checkbox("Mélanger Q", value=False)
         shuffle_o = c2.checkbox("Mélanger O", value=False)
@@ -1907,7 +1937,7 @@ def page_creator():
         html_out = generate_export_html(csv_in, doc_title, q_type, 
                                         use_columns=use_3_col, add_qr=add_qr, mode=html_mode,
                                         shuffle_q=shuffle_q, shuffle_o=shuffle_o, add_sheet=add_sheet,
-                                        open_all=open_all)
+                                        open_all=open_all, timer_seconds=timer_seconds)
         
         c1, c2 = st.columns(2)
         with c1:
