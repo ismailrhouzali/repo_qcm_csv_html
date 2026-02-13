@@ -1453,16 +1453,21 @@ def generate_js_quiz_html(content, title):
     return html
 
 def generate_export_html(content, title, m_type, **kwargs):
-    """Dispatche vers le bon template HTML selon le type de contenu."""
-    if m_type == "QCM JS Interactif":
+    """Dispatche vers le bon template HTML selon le type de contenu. Supporte les types BD (shorthand) et UI (longhand)."""
+    # JS Quiz
+    if m_type in ["QCM JS Interactif", "QCM_JS"]:
         return generate_js_quiz_html(content, title)
-    elif m_type == "QCM Classique":
+    # QCM Classique
+    elif m_type in ["QCM Classique", "QCM"]:
         return generate_html_content(content, title, **kwargs)
-    elif m_type == "Questions / Réponses":
+    # QA
+    elif m_type in ["Questions / Réponses", "QA"]:
         return generate_qa_html(content, title)
-    elif m_type == "Glossaire (Concept | Définition)":
+    # Glossaire
+    elif m_type in ["Glossaire (Concept | Définition)", "DEF"]:
         return generate_def_html(content, title)
-    elif m_type == "Synthèse MD (Style Pro)":
+    # Synthèse
+    elif m_type in ["Synthèse MD (Style Pro)", "Synthèse (Markdown)", "SUM"]:
         return generate_sum_html(content, title)
     return ""
 
@@ -1834,6 +1839,10 @@ def page_creator():
         st.subheader("⚙️ Configuration")
         module_title = st.text_input("Titre du Module", value=st.session_state.get('editing_name', "Nouveau Module"))
         
+        q_types = ["QCM Classique", "QCM JS Interactif", "Questions / Réponses", "Glossaire (Concept | Définition)", "Synthèse MD (Style Pro)"]
+        q_type = st.radio("Type", q_types, 
+                          index=q_types.index(st.session_state.get('editing_type', "QCM Classique")))
+
         # Manual Save Button
         if st.button("💾 Enregistrer dans la base", use_container_width=True, type="primary"):
             if module_title and module_title != "Nouveau Module" and st.session_state.get("csv_source_input"):
@@ -1851,11 +1860,11 @@ def page_creator():
                     logger.error(f"Erreur save manuelle: {e}")
             else:
                 st.warning("Veuillez saisir un titre et du contenu avant d'enregistrer.")
+
         # out_name and doc_title are now the same
         out_name = module_title
         doc_title = module_title
-        q_type = st.radio("Type", ["QCM Classique", "QCM JS Interactif", "Questions / Réponses", "Glossaire (Concept | Définition)", "Synthèse (Markdown)"],
-                          index=["QCM Classique", "QCM JS Interactif", "Questions / Réponses", "Glossaire (Concept | Définition)", "Synthèse (Markdown)"].index(st.session_state.get('editing_type', "QCM Classique")))
+        
         html_mode = st.radio("Style", ["Examen", "Révision"])
         c1, c2 = st.columns(2)
         shuffle_q = c1.checkbox("Mélanger Q", value=False)
@@ -1895,12 +1904,7 @@ def page_creator():
         except: pass
 
         # Generate HTML with the correct template
-        m_type_for_export = "QCM"
-        if "Questions" in q_type: m_type_for_export = "QA"
-        elif "Glossaire" in q_type: m_type_for_export = "DEF"
-        elif "Synthèse" in q_type: m_type_for_export = "SUM"
-        
-        html_out = generate_export_html(csv_in, doc_title, m_type_for_export, 
+        html_out = generate_export_html(csv_in, doc_title, q_type, 
                                         use_columns=use_3_col, add_qr=add_qr, mode=html_mode,
                                         shuffle_q=shuffle_q, shuffle_o=shuffle_o, add_sheet=add_sheet,
                                         open_all=open_all)
