@@ -1320,7 +1320,6 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
         const questions = {q_json};
         const title = "{title}";
         const hasTimer = {str(timer_seconds > 0).lower()};
-        let timeLeft = {timer_seconds};
         const storageKey = "qcm_js_progress_" + btoa(unescape(encodeURIComponent(title)));
         
         let state = {{
@@ -1333,7 +1332,6 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
         const saved = localStorage.getItem(storageKey);
         if (saved) {{
             state = JSON.parse(saved);
-            if (state.timeLeft !== undefined) timeLeft = state.timeLeft;
         }}
 
         const container = document.getElementById('quiz-container');
