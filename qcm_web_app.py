@@ -936,7 +936,7 @@ def generate_qa_html(content, title):
         q, a = row[0].strip(), row[1].strip()
         items_html += f"""
         <div class="qa-card">
-            <div class="qa-question">❓ Q{i}. {q}</div>
+            <div class="qa-question">Q{i}. {q}</div>
             <details>
                 <summary>▶ Afficher la réponse</summary>
                 <div class="qa-answer">{a}</div>
