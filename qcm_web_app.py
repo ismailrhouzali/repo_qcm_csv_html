@@ -925,7 +925,7 @@ def generate_html_content(csv_text, title, use_columns, add_qr=True, mode="Exame
 # --- TEMPLATES HTML SPÉCIFIQUES PAR TYPE ---
 
 def generate_qa_html(content, title):
-    """Génère un HTML propre pour les Questions / Réponses (Style modern sans-serif)."""
+    """Génère un HTML sobre pour les Questions / Réponses (Style Georgia, sans emoji)."""
     f = io.StringIO(content)
     reader = csv.reader(f, delimiter='|')
     next(reader, None)
@@ -935,10 +935,10 @@ def generate_qa_html(content, title):
         if len(row) < 2: continue
         q, a = row[0].strip(), row[1].strip()
         items_html += f"""
-        <div class="qa-card">
-            <div class="qa-question">❓ Q{i}. {q}</div>
+        <div class="qa-block">
+            <div class="qa-question">Question {i}: {q}</div>
             <details>
-                <summary>▶ Afficher la réponse</summary>
+                <summary>Réponse</summary>
                 <div class="qa-answer">{a}</div>
             </details>
         </div>"""
@@ -948,69 +948,50 @@ def generate_qa_html(content, title):
 <head>
 <meta charset="UTF-8"><title>{title}</title>
 <style>
-    :root {{
-        --p-blue: #1e40af;
-        --s-blue: #3b82f6;
-        --bg: #f1f5f9;
-        --text: #0f172a;
-    }}
     body {{ 
-        font-family: 'Inter', system-ui, -apple-system, sans-serif; 
-        max-width: 850px; 
+        font-family: 'Georgia', serif; 
+        max-width: 800px; 
         margin: auto; 
         padding: 40px 20px; 
-        color: var(--text); 
-        background: var(--bg);
-        line-height: 1.5;
+        color: #333; 
+        background: #fff;
+        line-height: 1.6;
     }}
     h1 {{ 
         text-align: center; 
-        color: var(--p-blue); 
-        border-bottom: 3px solid var(--s-blue); 
-        padding-bottom: 12px; 
+        color: #000; 
+        border-bottom: 2px solid #333; 
+        padding-bottom: 10px; 
         margin-bottom: 30px;
-        font-weight: 800;
     }}
-    .qa-card {{ 
-        background: white; 
-        border-radius: 12px; 
-        padding: 20px; 
-        margin-bottom: 16px; 
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); 
-        border-left: 5px solid var(--s-blue); 
+    .qa-block {{ 
+        border-bottom: 1px solid #eee; 
+        padding: 15px 0; 
+        margin-bottom: 10px; 
     }}
     .qa-question {{ 
-        font-weight: 700; 
+        font-weight: bold; 
         font-size: 1.1em; 
-        color: var(--text); 
     }}
-    details {{ margin-top: 10px; }}
+    details {{ margin-top: 5px; }}
     details summary {{ 
         cursor: pointer; 
-        font-weight: 600; 
-        color: var(--s-blue); 
-        list-style: none; 
-        padding: 5px 0;
+        color: #555; 
+        font-style: italic;
     }}
-    details summary:hover {{ text-decoration: underline; }}
     .qa-answer {{ 
-        padding: 15px; 
-        background: #f8fafc; 
-        border: 1px solid #e2e8f0;
-        border-radius: 8px; 
-        margin-top: 8px; 
-        line-height: 1.6; 
-        color: #334155;
+        padding: 10px 0; 
+        color: #444;
     }}
 </style>
 </head>
 <body>
-    <h1>❓ {title}</h1>
+    <h1>{title}</h1>
     {items_html}
 </body></html>"""
 
 def generate_def_html(content, title):
-    """Génère un HTML propre pour les Définitions / Glossaire (Style modern sans-serif)."""
+    """Génère un HTML sobre pour les Définitions / Glossaire (Style Georgia, sans emoji)."""
     f = io.StringIO(content)
     reader = csv.reader(f, delimiter='|')
     next(reader, None)
@@ -1026,69 +1007,46 @@ def generate_def_html(content, title):
 <head>
 <meta charset="UTF-8"><title>{title}</title>
 <style>
-    :root {{
-        --p-purple: #6d28d9;
-        --s-purple: #8b5cf6;
-        --bg: #f8fafc;
-    }}
     body {{ 
-        font-family: 'Inter', system-ui, sans-serif; 
-        max-width: 1000px; 
+        font-family: 'Georgia', serif; 
+        max-width: 900px; 
         margin: auto; 
         padding: 40px 20px; 
-        color: #1e293b; 
-        background: var(--bg); 
+        color: #333; 
     }}
     h1 {{ 
         text-align: center; 
-        color: var(--p-purple); 
-        border-bottom: 3px solid var(--s-purple); 
-        padding-bottom: 12px; 
+        color: #000; 
+        border-bottom: 2px solid #000; 
+        padding-bottom: 10px; 
         margin-bottom: 30px;
-        font-weight: 800;
     }}
     table {{ 
         width: 100%; 
-        border-collapse: separate; 
-        border-spacing: 0;
+        border-collapse: collapse; 
         margin-top: 20px; 
-        background: white; 
-        border-radius: 12px; 
-        overflow: hidden; 
-        box-shadow: 0 4px 15px rgba(0,0,0,0.05); 
-        border: 1px solid #e2e8f0;
     }}
     th {{ 
-        background: var(--p-purple); 
-        color: white; 
-        padding: 16px; 
+        border-bottom: 2px solid #000; 
+        padding: 12px; 
         text-align: left; 
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
     }}
     td {{ 
-        padding: 14px 16px; 
-        border-bottom: 1px solid #f1f5f9; 
+        padding: 12px; 
+        border-bottom: 1px solid #eee; 
         vertical-align: top; 
     }}
-    tr:last-child td {{ border-bottom: none; }}
-    tr:hover {{ background: #fdfaff; }}
     .concept {{ 
-        font-weight: 700; 
-        width: 25%; 
-        color: var(--p-purple); 
-        border-right: 1px solid #f1f5f9;
+        font-weight: bold; 
+        width: 30%; 
     }}
     .definition {{ 
         line-height: 1.6; 
-        color: #334155; 
-        padding-left: 20px;
     }}
 </style>
 </head>
 <body>
-    <h1>📜 {title}</h1>
+    <h1>{title}</h1>
     <table>
         <thead><tr><th>Concept</th><th>Définition</th></tr></thead>
         <tbody>{rows_html}</tbody>
