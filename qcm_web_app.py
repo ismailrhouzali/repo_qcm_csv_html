@@ -1000,12 +1000,11 @@ def generate_def_html(content, title):
     </table>
 </body></html>"""
 
-def generate_sum_html(content, title):
-    """Génère un HTML brillant pour les synthèses avec thèmes et support Markdown étendu."""
-    # nl2br: retours à la ligne automatiques
-    # extra: tableaux, etc.
-    # sane_lists: listes plus robustes
+def generate_sum_html(content, title, theme="theme-ocean", font_size="11pt", margin="2.5cm", justified=True):
+    """Génère un HTML brillant pour les synthèses avec thèmes injectés depuis l'app."""
     html_body = markdown.markdown(content, extensions=['extra', 'sane_lists', 'nl2br', 'toc'])
+    
+    just_class = "justified" if justified else ""
     
     return f"""<!DOCTYPE html>
 <html lang="fr">
@@ -1021,41 +1020,42 @@ def generate_sum_html(content, title):
         --bg: #ffffff;
         --paper: #ffffff;
         --border: #e2e8f0;
-        --page-margin: 2.5cm;
-        --font-size: 11pt;
+        --page-margin: {margin};
+        --font-size: {font_size};
     }}
 
-    /* Thème Océan (Vibrant) */
+    /* --- THÈMES --- */
     body.theme-ocean {{
-        --p-color: #1e1b4b;
-        --s-color: #4338ca;
-        --accent: #3b82f6;
-        --bg: #f8fafc;
-        --border: #bfdbfe;
+        --p-color: #1e1b4b; --s-color: #4338ca; --accent: #3b82f6; --bg: #f8fafc; --border: #bfdbfe;
     }}
     body.theme-ocean h1 {{ background: linear-gradient(135deg, #1e3a8a, #3b82f6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; border-bottom: 3px solid #3b82f6; }}
-    body.theme-ocean h2 {{ color: #1e40af; border-left: 4px solid #3b82f6; padding-left: 15px; border-bottom: none; }}
+    body.theme-ocean h2 {{ color: #1e40af; border-left: 4px solid #3b82f6; padding-left: 15px; }}
     body.theme-ocean ul li::marker {{ color: #3b82f6; }}
 
-    /* Thème Émeraude (Nature) */
     body.theme-emerald {{
-        --p-color: #064e3b;
-        --s-color: #059669;
-        --accent: #10b981;
-        --bg: #f0fdf4;
-        --border: #bcfdec;
+        --p-color: #064e3b; --s-color: #059669; --accent: #10b981; --bg: #f0fdf4; --border: #bcfdec;
     }}
-    body.theme-emerald h1 {{ color: #065f46; border-bottom: 3px solid #10b981; }}
-    body.theme-emerald h2 {{ color: #047857; background: #ecfdf5; padding: 8px 15px; border-radius: 6px; border-bottom: none; }}
+    body.theme-emerald h2 {{ color: #047857; background: #ecfdf5; padding: 8px 15px; border-radius: 6px; }}
     body.theme-emerald ol li::marker {{ color: #059669; font-weight: bold; }}
 
-    /* Thème Classique (LaTeX Modern) */
+    body.theme-lavender {{
+        --p-color: #4c1d95; --s-color: #7c3aed; --accent: #8b5cf6; --bg: #f5f3ff; --border: #ddd6fe;
+    }}
+    body.theme-lavender h1 {{ color: #5b21b6; border-bottom: 3px dashed #8b5cf6; }}
+    body.theme-lavender h2 {{ color: #6d28d9; border-bottom: 2px solid #ddd6fe; }}
+
+    body.theme-midnight {{
+        --p-color: #0f172a; --s-color: #334155; --accent: #38bdf8; --bg: #f1f5f9; --border: #cbd5e0;
+    }}
+    body.theme-midnight h1 {{ color: #1e293b; text-transform: uppercase; letter-spacing: 2px; }}
+
+    body.theme-sepia {{
+        --p-color: #431407; --s-color: #92400e; --accent: #b45309; --bg: #fffbeb; --border: #fde68a;
+    }}
+    body.theme-sepia h1 {{ color: #78350f; font-family: 'Times New Roman', serif; }}
+
     body.theme-classic {{
-        --p-color: #000000;
-        --s-color: #334155;
-        --accent: #000000;
-        --bg: #ffffff;
-        --border: #cbd5e0;
+        --p-color: #000000; --s-color: #334155; --accent: #000000; --bg: #ffffff; --border: #cbd5e0;
     }}
 
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -1070,130 +1070,40 @@ def generate_sum_html(content, title):
         max-width: 900px;
         margin: 0 auto;
         padding: 50px 40px;
-        transition: all 0.3s ease;
         counter-reset: h2counter;
     }}
 
-    .page-container {{
-        background: var(--paper);
-        min-height: 100vh;
-    }}
-
-    h1 {{ 
-        text-align: center; 
-        font-size: 2.6em; 
-        margin-bottom: 40px;
-        padding-bottom: 20px;
-        font-weight: bold;
-    }}
-    
-    h2 {{
-        counter-reset: h3counter;
-        margin-top: 2em;
-        margin-bottom: 15px;
-        font-size: 1.8em;
-        font-weight: bold;
-    }}
-    h2::before {{
-        counter-increment: h2counter;
-        content: counter(h2counter) ". ";
-    }}
-
-    h3 {{
-        margin-top: 1.5em;
-        margin-bottom: 10px;
-        font-size: 1.3em;
-        color: var(--s-color);
-    }}
-    h3::before {{
-        counter-increment: h3counter;
-        content: counter(h2counter) "." counter(h3counter) " ";
-    }}
+    h1 {{ text-align: center; font-size: 2.6em; margin-bottom: 40px; padding-bottom: 20px; font-weight: bold; }}
+    h2 {{ counter-reset: h3counter; margin-top: 2em; margin-bottom: 15px; font-size: 1.8em; font-weight: bold; }}
+    h2::before {{ counter-increment: h2counter; content: counter(h2counter) ". "; }}
+    h3 {{ margin-top: 1.5em; margin-bottom: 10px; font-size: 1.3em; color: var(--s-color); }}
+    h3::before {{ counter-increment: h3counter; content: counter(h2counter) "." counter(h3counter) " "; }}
     
     .justified p {{ text-align: justify; }}
     p {{ margin-bottom: 1.2em; white-space: pre-wrap; }}
     
-    /* Lists */
     ul, ol {{ margin: 20px 0 20px 40px; }}
     li {{ margin-bottom: 10px; padding-left: 5px; }}
     ul li::marker {{ font-size: 1.2em; }}
     
-    /* Tables */
-    table {{ 
-        width: 100%; 
-        border-collapse: collapse; 
-        margin: 30px 0; 
-        border: 2px solid var(--p-color);
-        background: white;
-    }}
+    table {{ width: 100%; border-collapse: collapse; margin: 30px 0; border: 2px solid var(--p-color); background: white; }}
     th {{ background: #f8fafc; padding: 15px; border: 1px solid var(--p-color); text-align: left; font-weight: bold; }}
     td {{ padding: 12px; border: 1px solid var(--p-color); }}
     
     blockquote {{
-        border-left: 6px solid var(--accent);
-        background: #f1f5f9;
-        padding: 20px 30px;
-        margin: 25px 0;
-        font-style: italic;
-        border-radius: 0 10px 10px 0;
-        box-shadow: 2px 2px 10px rgba(0,0,0,0.05);
+        border-left: 6px solid var(--accent); background: #f1f5f9; padding: 20px 30px; margin: 25px 0;
+        font-style: italic; border-radius: 0 10px 10px 0; box-shadow: 2px 2px 10px rgba(0,0,0,0.05);
     }}
 
-    /* Print Config Panel */
-    #print-config {{
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        background: white;
-        border: 2px solid var(--accent);
-        padding: 20px;
-        border-radius: 12px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-        z-index: 1000;
-        width: 260px;
-        font-family: 'Segoe UI', system-ui, sans-serif;
+    @media print {{
+        body {{ padding: 0; max-width: 100%; }}
+        .no-print {{ display: none !important; }}
     }}
-    .config-group {{ margin-bottom: 12px; }}
-    .config-group label {{ display: block; font-weight: bold; font-size: 12px; margin-bottom: 5px; color: #475569; }}
-    .config-group select, .config-group input {{ width: 100%; padding: 5px; border-radius: 4px; border: 1px solid #cbd5e0; }}
-    
-    @media print {{ #print-config {{ display: none !important; }} }}
-    @media (max-width: 600px) {{ body {{ padding: 20px; }} h1 {{ font-size: 2em; }} #print-config {{ width: 200px; bottom: 10px; right: 10px; }} }}
+    @media (max-width: 600px) {{ body {{ padding: 20px; }} h1 {{ font-size: 2em; }} }}
 </style>
 </head>
-<body class="theme-ocean justified">
-    <div id="print-config" class="no-print">
-        <h3 style="margin:0 0 15px 0; font-size:16px; border:none; background:none; color:var(--accent); text-align:center;">🎨 Configuration Impression</h3>
-        
-        <div class="config-group">
-            <label>Thème Visual</label>
-            <select onchange="document.body.className = this.value + (document.getElementById('check-just').checked ? ' justified' : '')">
-                <option value="theme-ocean">🌊 Océan (Vibrant)</option>
-                <option value="theme-emerald">🌲 Émeraude (Pro)</option>
-                <option value="theme-classic">📄 Classique (LaTeX)</option>
-            </select>
-        </div>
-
-        <div class="config-group">
-            <label>Taille du texte (Zoom)</label>
-            <input type="range" min="8" max="20" value="11" oninput="document.body.style.setProperty('--font-size', this.value+'pt')">
-        </div>
-
-        <div class="config-group">
-            <label>Marges (cm)</label>
-            <input type="range" min="0.5" max="5" step="0.5" value="2.5" oninput="document.body.style.setProperty('--page-margin', this.value+'cm')">
-        </div>
-
-        <div class="config-group" style="display:flex; align-items:center; gap:10px;">
-            <input type="checkbox" id="check-just" checked onchange="document.body.classList.toggle('justified', this.checked)">
-            <label style="margin:0;">Justifier le texte</label>
-        </div>
-
-        <button onclick="window.print()" style="width:100%; background:var(--accent); color:white; border:none; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer; margin-top:5px;">🖨️ Imprimer / PDF</button>
-    </div>
-
+<body class="{theme} {just_class}">
     <h1>{title}</h1>
-    
     <div class="content">
         {html_body}
     </div>
@@ -1512,7 +1422,14 @@ def generate_export_html(content, title, m_type, **kwargs):
         return generate_def_html(content, title)
     # Synthèse
     elif m_type in ["Synthèse MD (Style Pro)", "Synthèse (Markdown)", "SUM"]:
-        return generate_sum_html(content, title)
+        # New: Pass theme, font_size, margin, justified to sum_html
+        sum_theme = kwargs.get('sum_theme', 'theme-ocean')
+        sum_font = kwargs.get('sum_font', '11pt')
+        sum_margin = kwargs.get('sum_margin', '2.5cm')
+        sum_justified = kwargs.get('sum_justified', True)
+        return generate_sum_html(content, title, 
+                                 theme=sum_theme, font_size=sum_font, 
+                                 margin=sum_margin, justified=sum_justified)
     return ""
 
 def perform_stats(csv_text):
@@ -1925,7 +1842,25 @@ def page_creator():
         add_sheet = st.checkbox("Feuille Réponses", value=True)
         open_all = False
         if "Questions" in q_type:
-            open_all = st.checkbox("Ouvrir tout", value=False)
+            open_all = st.checkbox("Ouvrir tout", value=False, key="open_all")
+
+        # Specialty settings for Synthesis
+        sum_theme, sum_font, sum_margin, sum_just = "theme-ocean", "11pt", "2.5cm", True
+        if q_type in ["Synthèse MD (Style Pro)", "Synthèse (Markdown)", "SUM"]:
+            st.divider()
+            st.subheader("🎨 Style de Synthèse")
+            th_map = {
+                "🌊 Océan (Vibrant)": "theme-ocean",
+                "🌲 Émeraude (Nature)": "theme-emerald",
+                "📄 Classique (LaTeX)": "theme-classic",
+                "🟣 Lavender (Doux)": "theme-lavender",
+                "🌌 Midnight (Moderne)": "theme-midnight",
+                "📜 Sepia (Académique)": "theme-sepia"
+            }
+            sum_theme = th_map[st.selectbox("Thème", list(th_map.keys()))]
+            sum_font = f"{st.slider('Taille de police', 8, 20, 11)}pt"
+            sum_margin = f"{st.slider('Marges (cm)', 0.5, 5.0, 2.5, 0.5)}cm"
+            sum_just = st.checkbox("Justifier le texte", value=True)
 
     # The title is handled by module_title above
 
@@ -1958,7 +1893,8 @@ def page_creator():
         html_out = generate_export_html(csv_in, doc_title, q_type, 
                                         use_columns=use_3_col, add_qr=add_qr, mode=html_mode,
                                         shuffle_q=shuffle_q, shuffle_o=shuffle_o, add_sheet=add_sheet,
-                                        open_all=open_all, timer_seconds=timer_seconds)
+                                        open_all=st.session_state.get('open_all', False), timer_seconds=timer_seconds,
+                                        sum_theme=sum_theme, sum_font=sum_font, sum_margin=sum_margin, sum_justified=sum_just)
         
         c1, c2 = st.columns(2)
         with c1:
@@ -2571,11 +2507,34 @@ def page_visualizer():
     st.divider()
     
     if v["type"] == "SUM":
-        st.markdown(f"""
-        <div style="font-family: 'Inter', sans-serif; color: #334155; line-height: 1.7;">
-            {v["content"]}
-        </div>
-        """, unsafe_allow_html=True)
+        with st.sidebar:
+            st.divider()
+            st.subheader("🎨 Style de Synthèse")
+            th_map = {
+                "🌊 Océan (Vibrant)": "theme-ocean",
+                "🌲 Émeraude (Nature)": "theme-emerald",
+                "📄 Classique (LaTeX)": "theme-classic",
+                "🟣 Lavender (Doux)": "theme-lavender",
+                "🌌 Midnight (Moderne)": "theme-midnight",
+                "📜 Sepia (Académique)": "theme-sepia"
+            }
+            sum_theme = th_map[st.selectbox("Thème", list(th_map.keys()), key="v_sum_theme")]
+            sum_font = f"{st.slider('Taille de police', 8, 20, 11, key='v_sum_font')}pt"
+            sum_margin = f"{st.slider('Marges (cm)', 0.5, 5.0, 2.5, 0.5, key='v_sum_margin')}cm"
+            sum_just = st.checkbox("Justifier le texte", value=True, key="v_sum_just")
+
+        html_out = generate_sum_html(v["content"], v["name"], 
+                                     theme=sum_theme, font_size=sum_font, 
+                                     margin=sum_margin, justified=sum_just)
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            st.download_button("📥 Télécharger HTML", html_out, f"{v['name']}.html", key="v_dl_html")
+        with c2:
+            pdf_bytes = convert_html_to_pdf(html_out)
+            if pdf_bytes: st.download_button("📄 TÉLÉCHARGER PDF", pdf_bytes, f"{v['name']}.pdf", key="v_dl_pdf")
+            
+        st.components.v1.html(html_out, height=800, scrolling=True)
     elif v["type"] == "QA":
         # Simple parsing for Q&A
         lines = v["content"].split("\n")
