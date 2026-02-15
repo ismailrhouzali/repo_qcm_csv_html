@@ -1001,10 +1001,7 @@ def generate_def_html(content, title):
 </body></html>"""
 
 def generate_sum_html(content, title):
-    """Génère un HTML professionnel pour les synthèses/résumés Markdown avec support complet."""
-    # Conversion Markdown complète avec extensions
-    # 'extra' supporte les tableaux, listes complexes, etc.
-    # 'toc' génère une table des matières automatique s'il y a [TOC] ou via anchor ids
+    """Génère un HTML professionnel pour les synthèses/résumés Markdown avec support complet (Style LaTeX)."""
     html_body = markdown.markdown(content, extensions=['extra', 'toc', 'sane_lists'])
     
     return f"""<!DOCTYPE html>
@@ -1015,170 +1012,175 @@ def generate_sum_html(content, title):
 <title>{title}</title>
 <style>
     :root {{
-        --h1-color: #1e3a8a;
-        --h2-color: #2563eb;
-        --h3-color: #059669;
-        --text-color: #1f2937;
+        --h1-color: #000000;
+        --h2-color: #1a202c;
+        --h3-color: #2d3748;
+        --text-color: #2d3748;
         --bg-color: #ffffff;
-        --code-bg: #f3f4f6;
-        --border-color: #e5e7eb;
+        --code-bg: #f7fafc;
+        --border-color: #cbd5e0;
+        --page-margin: 2.5cm;
+        --font-size: 11pt;
     }}
 
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    @page {{ size: A4; margin: 1.5cm; }}
+    @page {{ 
+        size: A4; 
+        margin: var(--page-margin); 
+    }}
     
     body {{ 
-        font-family: 'Georgia', 'Times New Roman', serif; 
-        font-size: 11pt; 
+        font-family: 'Georgia', serif; 
+        font-size: var(--font-size); 
         line-height: 1.6; 
         color: var(--text-color); 
         background: var(--bg-color);
-        max-width: 850px;
+        max-width: 900px;
         margin: 0 auto;
-        padding: 50px 40px;
+        padding: 60px 40px;
+        counter-reset: h2counter;
     }}
 
-    /* TOC Styling */
-    .toc {{
-        background: #f8fafc;
-        padding: 20px;
-        border-radius: 8px;
-        margin-bottom: 40px;
-        border: 1px solid var(--border-color);
+    /* LaTeX-like Heading Numbering */
+    h2 {{ counter-reset: h3counter; margin-top: 1.5em; }}
+    h2::before {{
+        counter-increment: h2counter;
+        content: counter(h2counter) ". ";
     }}
-    .toc ul {{ list-style: none; padding-left: 0; }}
-    .toc li {{ margin-bottom: 5px; }}
-    .toc a {{ text-decoration: none; color: var(--h2-color); font-weight: 500; }}
-    .toc a:hover {{ text-decoration: underline; }}
-    
+    h3::before {{
+        counter-increment: h3counter;
+        content: counter(h2counter) "." counter(h3counter) " ";
+    }}
+
+    /* UI Config Panel (Hidden in print) */
+    #print-config {{
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: white;
+        border: 1px solid #ccc;
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        z-index: 1000;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        font-family: sans-serif;
+        font-size: 12px;
+    }}
+    #print-config label {{ font-weight: bold; }}
+    @media print {{ #print-config {{ display: none !important; }} }}
+
     h1 {{ 
         text-align: center; 
         color: var(--h1-color); 
-        font-size: 2.2em; 
-        margin-bottom: 20px;
-        font-weight: 800;
-        border-bottom: 4px solid var(--h1-color);
-        padding-bottom: 15px;
-        text-transform: uppercase;
+        font-size: 2.4em; 
+        margin-bottom: 30px;
+        font-weight: normal;
+        border-bottom: 2px solid #000;
+        padding-bottom: 20px;
     }}
     
     h2 {{
         color: var(--h2-color);
         font-size: 1.6em;
-        margin-top: 40px;
         margin-bottom: 15px;
-        border-bottom: 2px solid var(--border-color);
-        padding-bottom: 8px;
-        font-weight: 700;
+        border-bottom: 1px solid #edf2f7;
+        padding-bottom: 5px;
     }}
     
     h3 {{
         color: var(--h3-color);
-        font-size: 1.3em;
-        margin-top: 30px;
-        margin-bottom: 12px;
-        font-weight: 600;
+        font-size: 1.25em;
+        margin-top: 1.2em;
+        margin-bottom: 10px;
     }}
     
-    p {{ margin-bottom: 16px; text-align: justify; }}
+    .justified p {{ text-align: justify; text-justify: inter-word; }}
+    p {{ margin-bottom: 1.2em; }}
     
     /* Lists */
     ul, ol {{ margin: 15px 0 15px 30px; }}
-    li {{ margin-bottom: 8px; }}
+    li {{ margin-bottom: 6px; }}
     
     /* Tables */
     table {{ 
         width: 100%; 
         border-collapse: collapse; 
-        margin: 25px 0; 
-        font-size: 10pt;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        margin: 30px 0; 
+        font-size: 0.95em;
+        border: 1px solid #000;
     }}
     th {{ 
-        background-color: #f9fafb; 
-        color: var(--h1-color); 
+        background-color: #f8fafc; 
+        font-weight: bold;
         padding: 12px; 
-        border: 1px solid var(--border-color);
+        border: 1px solid #000;
         text-align: left;
     }}
     td {{ 
         padding: 10px 12px; 
-        border: 1px solid var(--border-color); 
+        border: 1px solid #000; 
     }}
-    tr:nth-child(even) {{ background-color: #fdfdfd; }}
     
     /* Code blocks */
     code {{
         background: var(--code-bg);
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-family: 'Cascadia Code', 'Fira Code', 'Courier New', monospace;
+        padding: 2px 4px;
+        font-family: monospace;
         font-size: 0.9em;
-        color: #d946ef;
     }}
     
     pre {{
-        background: #1e293b;
-        color: #e2e8f0;
-        padding: 20px;
-        border-radius: 8px;
-        margin: 20px 0;
+        background: #f7fafc;
+        border: 1px solid var(--border-color);
+        padding: 15px;
         overflow-x: auto;
-        font-family: 'Cascadia Code', 'Fira Code', monospace;
-        font-size: 9.5pt;
-        line-height: 1.5;
+        margin: 20px 0;
+        font-size: 0.9em;
     }}
     
-    pre code {{
-        background: none;
-        padding: 0;
-        color: inherit;
-        font-size: inherit;
-    }}
-    
-    /* Horizontal Rule */
-    hr {{
-        border: 0;
-        height: 1px;
-        background-image: linear-gradient(to right, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0));
-        margin: 40px 0;
-    }}
-
     blockquote {{
-        border-left: 5px solid var(--h3-color);
-        background: #f0fdf4;
-        padding: 15px 25px;
+        border-left: 4px solid #000;
+        padding: 10px 20px;
         margin: 20px 0;
         font-style: italic;
-        color: #065f46;
-        border-radius: 0 8px 8px 0;
+        background: #fafafa;
     }}
 
-    a {{ color: var(--h2-color); text-decoration: none; }}
-    a:hover {{ text-decoration: underline; }}
+    /* Mobile Responsive */
+    @media (max-width: 600px) {{
+        body {{ padding: 30px 15px; }}
+        h1 {{ font-size: 1.8em; }}
+    }}
 
-    /* Print adjustments */
     @media print {{
         body {{ padding: 0; max-width: 100%; }}
-        .toc {{ display: none; }}
         h2, h3 {{ page-break-after: avoid; }}
         pre, table {{ page-break-inside: avoid; }}
     }}
 </style>
 </head>
-<body>
-    <h1>{title}</h1>
-    <div class="toc no-print">
-        <strong>📌 Sommaire</strong>
-        {markdown.markdown('[TOC]', extensions=['toc'])}
+<body class="justified">
+    <div id="print-config" class="no-print">
+        <label>Configuration Impression</label>
+        <div>Zoom: <input type="range" min="8" max="18" value="11" oninput="document.body.style.setProperty('--font-size', this.value+'pt')"></div>
+        <div>Marge: <input type="range" min="1" max="4" step="0.5" value="2.5" oninput="document.body.style.setProperty('--page-margin', this.value+'cm')"></div>
+        <div>Justifier: <input type="checkbox" checked onchange="document.body.classList.toggle('justified', this.checked)"></div>
+        <button onclick="window.print()" style="margin-top:5px; cursor:pointer; padding:5px;">🖨️ Imprimer (PDF)</button>
     </div>
+
+    <h1>{title}</h1>
+    
     <div class="content">
         {html_body}
     </div>
 </body>
 </html>"""
 
-    return html
+    
+
 
 def generate_js_quiz_html(content, title, timer_seconds=0):
     """Génère un QCM interactif Standalone avec JS, Stockage Local et Scoring Partiel."""
