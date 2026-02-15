@@ -1054,6 +1054,28 @@ def generate_sum_html(content, title, theme="theme-ocean", font_size="11pt", mar
     }}
     body.theme-sepia h1 {{ color: #78350f; font-family: 'Times New Roman', serif; }}
 
+    /* Thème Minimaliste (Compact pour Impression) */
+    body.theme-minimal {{
+        --p-color: #000000; --s-color: #000000; --accent: #000000; --bg: #ffffff; --border: #000000;
+    }}
+    body.theme-minimal {{ line-height: 1.3; }}
+    body.theme-minimal h1 {{ font-size: 1.8em; margin-bottom: 15px; border-bottom: 1px solid #000; }}
+    body.theme-minimal h2 {{ font-size: 1.3em; margin-top: 15px; margin-bottom: 5px; border: none; padding: 0; }}
+    body.theme-minimal h3 {{ font-size: 1.1em; margin-top: 10px; margin-bottom: 3px; }}
+    body.theme-minimal p {{ margin-bottom: 0.4em; }}
+    body.theme-minimal ul, body.theme-minimal ol {{ margin: 10px 0 10px 25px; }}
+    body.theme-minimal li {{ margin-bottom: 2px; }}
+
+    /* Thème Mémorisation (Vibrant & Structuré) */
+    body.theme-memo {{
+        --p-color: #1e293b; --s-color: #4f46e5; --accent: #f59e0b; --bg: #ffffff; --border: #e2e8f0;
+    }}
+    body.theme-memo h1 {{ background: #1e293b; color: white; padding: 30px; border-radius: 15px; text-transform: uppercase; letter-spacing: 3px; border: none; }}
+    body.theme-memo h2 {{ background: #fef3c7; color: #92400e; padding: 12px 20px; border-radius: 12px; border-left: 8px solid #f59e0b; box-shadow: 3px 3px 0px #fde68a; }}
+    body.theme-memo h3 {{ color: #4338ca; border-bottom: 2px solid #e0e7ff; display: inline-block; padding-bottom: 2px; }}
+    body.theme-memo blockquote {{ background: #fff7ed; border-color: #f59e0b; color: #7c2d12; }}
+    body.theme-memo ul li::marker {{ color: #f59e0b; content: "⚡ "; }}
+
     body.theme-classic {{
         --p-color: #000000; --s-color: #334155; --accent: #000000; --bg: #ffffff; --border: #cbd5e0;
     }}
@@ -1855,7 +1877,9 @@ def page_creator():
                 "📄 Classique (LaTeX)": "theme-classic",
                 "🟣 Lavender (Doux)": "theme-lavender",
                 "🌌 Midnight (Moderne)": "theme-midnight",
-                "📜 Sepia (Académique)": "theme-sepia"
+                "📜 Sepia (Académique)": "theme-sepia",
+                "📉 Minimaliste (Éco-impression)": "theme-minimal",
+                "🧠 Mémorisation (Flash-Couleurs)": "theme-memo"
             }
             sum_theme = th_map[st.selectbox("Thème", list(th_map.keys()))]
             sum_font = f"{st.slider('Taille de police', 8, 20, 11)}pt"
@@ -2516,7 +2540,9 @@ def page_visualizer():
                 "📄 Classique (LaTeX)": "theme-classic",
                 "🟣 Lavender (Doux)": "theme-lavender",
                 "🌌 Midnight (Moderne)": "theme-midnight",
-                "📜 Sepia (Académique)": "theme-sepia"
+                "📜 Sepia (Académique)": "theme-sepia",
+                "📉 Minimaliste (Éco-impression)": "theme-minimal",
+                "🧠 Mémorisation (Flash-Couleurs)": "theme-memo"
             }
             sum_theme = th_map[st.selectbox("Thème", list(th_map.keys()), key="v_sum_theme")]
             sum_font = f"{st.slider('Taille de police', 8, 20, 11, key='v_sum_font')}pt"
