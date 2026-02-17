@@ -1176,10 +1176,10 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
             --primary: #1a365d;
             --primary-dark: #0f2644;
             --primary-light: #2c5282;
-            --success: #2f855a;
-            --success-dark: #276749;
-            --danger: #c53030;
-            --danger-dark: #9b2c2c;
+            --success: #16a34a;
+            --success-dark: #15803d;
+            --danger: #dc2626;
+            --danger-dark: #b91c1c;
             --warning: #d69e2e;
             --bg: #fafaf9;
             --card-bg: #ffffff;
@@ -1206,7 +1206,6 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
             margin: 0; 
             padding: 0; 
             box-sizing: border-box; 
-            -webkit-tap-highlight-color: transparent;
         }}
         
         html {{
@@ -1227,7 +1226,7 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
         /* ===== HEADER ===== */
         header {{
             background: var(--card-bg);
-            padding: 1rem 1.5rem;
+            padding: 0.75rem 1rem;
             border-bottom: 2px solid var(--border);
             position: sticky;
             top: 0;
@@ -1326,7 +1325,6 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
             justify-content: center;
             font-size: 1.25rem;
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-            user-select: none;
         }}
         
         .icon-btn:active {{
@@ -1350,8 +1348,8 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
             background: var(--card-bg);
             border: 1px solid var(--border);
             border-radius: var(--radius);
-            padding: clamp(1.25rem, 4vw, 2rem);
-            margin-bottom: clamp(1rem, 3vw, 1.5rem);
+            padding: clamp(1rem, 3vw, 1.5rem);
+            margin-bottom: clamp(0.75rem, 2vw, 1rem);
             box-shadow: 0 2px 8px var(--shadow), 0 0 0 1px rgba(0,0,0,0.02);
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }}
@@ -1407,16 +1405,15 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
         .option {{
             display: flex;
             align-items: center;
-            gap: 1rem;
-            padding: 1rem 1.25rem;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
             border: 2px solid var(--border);
-            border-radius: 10px;
+            border-radius: 8px;
             cursor: pointer;
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
             overflow: hidden;
-            user-select: none;
-            min-height: 52px;
+            min-height: 48px;
         }}
         
         .option::before {{
@@ -1445,18 +1442,18 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
         
         .option.selected {{
             border-color: var(--primary);
-            background: rgba(26, 54, 93, 0.05);
+            background: rgba(26, 54, 93, 0.08);
         }}
         
         .option.correct {{
             border-color: var(--success);
-            background: rgba(47, 133, 90, 0.08);
+            background: rgba(22, 163, 74, 0.12);
             animation: correctPulse 0.5s ease;
         }}
         
         .option.incorrect {{
             border-color: var(--danger);
-            background: rgba(197, 48, 48, 0.08);
+            background: rgba(220, 38, 38, 0.12);
             animation: shake 0.4s ease;
         }}
         
@@ -1496,10 +1493,10 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
         .btn {{
             background: var(--primary);
             color: white;
-            padding: 0.875rem 1.75rem;
-            border-radius: 10px;
+            padding: 0.65rem 1.25rem;
+            border-radius: 8px;
             border: none;
-            font-size: 1rem;
+            font-size: 0.95rem;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1507,10 +1504,9 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
             align-items: center;
             justify-content: center;
             gap: 0.5rem;
-            margin-top: 1.25rem;
-            min-height: 48px;
-            user-select: none;
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+            margin-top: 1rem;
+            min-height: 44px;
+            box-shadow: 0 2px 8px rgba(26, 54, 93, 0.2);
         }}
         
         .btn:active:not(:disabled) {{
@@ -1543,15 +1539,15 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
         }}
         
         .feedback.correct {{
-            background: #e6f4ea;
+            background: #d1fae5;
             border-color: var(--success);
-            color: #1e4620;
+            color: #065f46;
         }}
         
         .feedback.incorrect {{
-            background: #fce8e6;
+            background: #fee2e2;
             border-color: var(--danger);
-            color: #5f2120;
+            color: #991b1b;
         }}
         
         .feedback-title {{
