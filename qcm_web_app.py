@@ -1136,212 +1136,594 @@ def generate_sum_html(content, title, theme="theme-ocean", font_size="11pt", mar
 
 
 def generate_js_quiz_html(content, title, timer_seconds=0):
-    """Génère un QCM interactif Standalone avec JS, Stockage Local et Scoring Partiel."""
+    """Génère un QCM interactif Premium avec Randomisation, All-or-Nothing Scoring, Dark Mode et Export PDF."""
     questions = parse_csv(content)
     import json
-    q_json = json.dumps(questions, ensure_ascii=False)
+    import random
+    
+    # Shuffle questions AND options for each question
+    shuffled_questions = []
+    for q in questions:
+        q_copy = q.copy()
+        # Create option mapping before shuffling
+        options_with_letters = [(chr(65 + i), opt) for i, opt in enumerate(q['opts'])]
+        random.shuffle(options_with_letters)
+        
+        # Build new mapping
+        new_letters = [item[0] for item in options_with_letters]
+        q_copy['opts'] = [item[1] for item in options_with_letters]
+        
+        # Update correct answer to match new positions
+        correct_answers = list(q['ans'])
+        new_correct = ''.join([chr(65 + new_letters.index(old_letter)) 
+                              for old_letter in correct_answers if old_letter in new_letters])
+        q_copy['ans'] = new_correct
+        shuffled_questions.append(q_copy)
+    
+    # Shuffle question order
+    random.shuffle(shuffled_questions)
+    
+    q_json = json.dumps(shuffled_questions, ensure_ascii=False)
     
     html = f"""<!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title} - Quiz Interactif</title>
+    <title>{title} - Quiz Interactif Premium</title>
     <style>
         :root {{
-            --primary: #2563eb;
-            --success: #059669;
-            --danger: #dc2626;
+            --primary: #3b82f6;
+            --primary-dark: #2563eb;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
             --bg: #f8fafc;
             --card-bg: #ffffff;
             --text: #1e293b;
+            --text-secondary: #64748b;
             --border: #e2e8f0;
+            --shadow: rgba(0, 0, 0, 0.1);
         }}
+        
+        [data-theme="dark"] {{
+            --bg: #0f172a;
+            --card-bg: #1e293b;
+            --text: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border: #334155;
+            --shadow: rgba(0, 0, 0, 0.3);
+        }}
+        
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        
         body {{
-            font-family: 'Georgia', serif;
-            background-color: var(--bg);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg);
             color: var(--text);
-            margin: 0;
-            padding: 0;
             line-height: 1.6;
+            transition: background-color 0.3s, color 0.3s;
         }}
+        
         header {{
             background: var(--card-bg);
-            padding: 0.8rem 1.5rem;
-            border-bottom: 2px solid var(--border);
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border);
             position: sticky;
             top: 0;
             z-index: 100;
+            box-shadow: 0 2px 8px var(--shadow);
+            transition: all 0.3s;
+        }}
+        
+        .header-content {{
+            max-width: 1000px;
+            margin: 0 auto;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
         }}
-        .header-left {{ display: flex; flex-direction: column; gap: 4px; }}
-        .header-right {{ display: flex; align-items: center; gap: 20px; }}
+        
+        .header-title {{
+            flex: 1;
+            min-width: 200px;
+        }}
+        
+        h1 {{
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 0.5rem;
+        }}
+        
+        .progress-container {{
+            height: 8px;
+            background: var(--border);
+            border-radius: 999px;
+            overflow: hidden;
+            position: relative;
+        }}
+        
+        .progress-bar {{
+            height: 100%;
+            background: linear-gradient(90deg, var(--success), var(--primary));
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 999px;
+        }}
+        
+        .header-stats {{
+            display: flex;
+            gap: 1.5rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }}
+        
+        .stat-box {{
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.25rem;
+        }}
+        
+        .stat-label {{
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }}
+        
+        .stat-value {{
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--primary);
+        }}
+        
+        .timer-box .stat-value {{
+            color: var(--danger);
+            font-family: 'Courier New', monospace;
+        }}
+        
+        .action-buttons {{
+            display: flex;
+            gap: 0.5rem;
+        }}
+        
+        .icon-btn {{
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            border: none;
+            background: var(--border);
+            color: var(--text);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            transition: all 0.2s;
+        }}
+        
+        .icon-btn:hover {{
+            background: var(--primary);
+            color: white;
+            transform: scale(1.05);
+        }}
         
         .container {{
-            max-width: 800px;
-            margin: 1.5rem auto;
+            max-width: 900px;
+            margin: 2rem auto;
             padding: 0 1rem;
         }}
-        h1 {{ font-size: 1.3rem; margin: 0; color: var(--primary); }}
-        .score-box {{ font-weight: bold; font-size: 1.15rem; color: var(--success); }}
-        .timer-box {{ font-weight: bold; font-size: 1.15rem; color: var(--danger); min-width: 80px; }}
         
         .card {{
             background: var(--card-bg);
             border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 1.5rem;
-            margin-bottom: 1.2rem;
-            box-shadow: none; /* No shadow as requested */
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 8px var(--shadow);
+            transition: all 0.3s;
         }}
-        .question-text {{ font-size: 1.2rem; font-weight: bold; margin-bottom: 1rem; }}
-        .options {{ display: flex; flex-direction: column; gap: 0.5rem; }}
+        
+        .card.answered {{
+            opacity: 0.95;
+        }}
+        
+        .question-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }}
+        
+        .question-number {{
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            background: var(--border);
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+        }}
+        
+        .question-status {{
+            font-size: 1.25rem;
+        }}
+        
+        .question-text {{
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            line-height: 1.7;
+        }}
+        
+        .options {{
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }}
+        
         .option {{
             display: flex;
             align-items: center;
             gap: 1rem;
-            padding: 0.8rem;
-            border: 1px solid var(--border);
-            border-radius: 6px;
+            padding: 1rem 1.25rem;
+            border: 2px solid var(--border);
+            border-radius: 10px;
             cursor: pointer;
             transition: all 0.2s;
-        }}
-        .option:hover {{ background-color: #f1f5f9; }}
-        .option.selected {{ border-color: var(--primary); background-color: #eff6ff; }}
-        .option input {{ transform: scale(1.1); }}
-        
-        .btn {{
-            display: inline-block;
-            background: var(--primary);
-            color: white;
-            padding: 0.6rem 1.2rem;
-            border-radius: 4px;
-            border: none;
-            font-size: 0.95rem;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 1.2rem;
-        }}
-        .btn-reset {{ background: #94a3b8; margin-top: 0; margin-left: 10px; padding: 0.4rem 0.8rem; }}
-        .btn:disabled {{ opacity: 0.5; cursor: not-allowed; }}
-        
-        .feedback {{
-            margin-top: 1.2rem;
-            padding: 1rem;
-            border-radius: 6px;
-            display: none;
-        }}
-        .feedback.correct {{ background: #d1fae5; color: #065f46; border-left: 4px solid var(--success); }}
-        .feedback.incorrect {{ background: #fee2e2; color: #991b1b; border-left: 4px solid var(--danger); }}
-        
-        .correct-opt {{ background-color: #d1fae5 !important; border-color: var(--success) !important; }}
-        .incorrect-opt {{ background-color: #fee2e2 !important; border-color: var(--danger) !important; }}
-        
-        .explanation {{ font-style: italic; margin-top: 0.5rem; font-size: 0.9rem; }}
-        
-        .progress-bar-container {{
-            width: 100%;
-            height: 6px;
-            background: var(--border);
-            border-radius: 3px;
+            position: relative;
             overflow: hidden;
         }}
-        .progress-bar {{
+        
+        .option::before {{
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
             height: 100%;
-            background: var(--success);
-            width: 0%;
-            transition: width 0.3s;
+            width: 0;
+            background: var(--primary);
+            opacity: 0.05;
+            transition: width 0.2s;
+        }}
+        
+        .option:hover::before {{
+            width: 100%;
+        }}
+        
+        .option:hover {{
+            border-color: var(--primary);
+            transform: translateX(4px);
+        }}
+        
+        .option.selected {{
+            border-color: var(--primary);
+            background: linear-gradient(to right, rgba(59, 130, 246, 0.1), transparent);
+        }}
+        
+        .option.correct {{
+            border-color: var(--success);
+            background: linear-gradient(to right, rgba(16, 185, 129, 0.15), transparent);
+        }}
+        
+        .option.incorrect {{
+            border-color: var(--danger);
+            background: linear-gradient(to right, rgba(239, 68, 68, 0.15), transparent);
+        }}
+        
+        .option input[type="checkbox"] {{
+            width: 20px;
+            height: 20px;
+            accent-color: var(--primary);
+            cursor: pointer;
+        }}
+        
+        .option-letter {{
+            font-weight: 700;
+            color: var(--primary);
+            min-width: 24px;
+        }}
+        
+        .btn {{
+            background: var(--primary);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            border: none;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-block;
+            margin-top: 1rem;
+        }}
+        
+        .btn:hover:not(:disabled) {{
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }}
+        
+        .btn:disabled {{
+            opacity: 0.5;
+            cursor: not-allowed;
+        }}
+        
+        .feedback {{
+            margin-top: 1.5rem;
+            padding: 1.25rem;
+            border-radius: 10px;
+            border-left: 4px solid;
+            animation: slideIn 0.3s ease;
+        }}
+        
+        @keyframes slideIn {{
+            from {{ opacity: 0; transform: translateY(-10px); }}
+            to {{ opacity: 1; transform: translateY(0); }}
+        }}
+        
+        .feedback.correct {{
+            background: #d1fae5;
+            border-color: var(--success);
+            color: #065f46;
+        }}
+        
+        .feedback.incorrect {{
+            background: #fee2e2;
+            border-color: var(--danger);
+            color: #991b1b;
+        }}
+        
+        .feedback-title {{
+            font-weight: 700;
+            font-size: 1.125rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }}
+        
+        .explanation {{
+            font-style: italic;
+            margin-top: 0.5rem;
+            opacity: 0.9;
+        }}
+        
+        .results-page {{
+            text-align: center;
+            padding: 3rem 1rem;
+        }}
+        
+        .results-card {{
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 3rem;
+            box-shadow: 0 8px 24px var(--shadow);
+            max-width: 600px;
+            margin: 0 auto;
+        }}
+        
+        .results-icon {{
+            font-size: 5rem;
+            margin-bottom: 1rem;
+        }}
+        
+        .results-title {{
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }}
+        
+        .results-score {{
+            font-size: 4rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--primary), var(--success));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin: 1rem 0;
+        }}
+        
+        .results-stats {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 1rem;
+            margin: 2rem 0;
+        }}
+        
+        .results-stat {{
+            padding: 1rem;
+            background: var(--border);
+            border-radius: 10px;
+        }}
+        
+        .results-stat-value {{
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary);
+        }}
+        
+        .results-stat-label {{
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }}
+        
+        .results-message {{
+            font-size: 1.125rem;
+            color: var(--text-secondary);
+            margin: 1.5rem 0;
+        }}
+        
+        .results-actions {{
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 2rem;
+            flex-wrap: wrap;
+        }}
+        
+        .btn-secondary {{
+            background: var(--border);
+            color: var(--text);
+        }}
+        
+        .btn-secondary:hover {{
+            background: var(--text-secondary);
+            color: white;
+        }}
+        
+        @media print {{
+            header, .action-buttons, .btn {{ display: none !important; }}
+            body {{ background: white !important; }}
+            .card {{ page-break-inside: avoid; box-shadow: none; border: 1px solid #ddd; }}
+        }}
+        
+        @media (max-width: 640px) {{
+            header {{ padding: 1rem; }}
+            .header-content {{ flex-direction: column; align-items: stretch; }}
+            .header-stats {{ justify-content: space-around; }}
+            h1 {{ font-size: 1.25rem; }}
+            .card {{ padding: 1.5rem; }}
+            .results-score {{ font-size: 3rem; }}
         }}
     </style>
 </head>
 <body>
     <header>
-        <div class="header-left">
-            <h1>{title}</h1>
-            <div class="progress-bar-container"><div id="progress" class="progress-bar"></div></div>
-        </div>
-        <div class="header-right">
-            {f'<div class="timer-box" id="timer">--:--</div>' if timer_seconds > 0 else ''}
-            <div class="score-box">Score: <span id="current-score">0.0</span> / <span id="total-q">0</span></div>
-            <button class="btn btn-reset" onclick="resetProgress()">🔄 Reset</button>
+        <div class="header-content">
+            <div class="header-title">
+                <h1>{title}</h1>
+                <div class="progress-container">
+                    <div class="progress-bar" id="progress"></div>
+                </div>
+            </div>
+            <div class="header-stats">
+                {f'<div class="stat-box timer-box"><span class="stat-label">Temps</span><span class="stat-value" id="timer">--:--</span></div>' if timer_seconds > 0 else ''}
+                <div class="stat-box">
+                    <span class="stat-label">Score</span>
+                    <span class="stat-value"><span id="current-score">0</span> / <span id="total-q">0</span></span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-label">Progrès</span>
+                    <span class="stat-value" id="answered-count">0</span>
+                </div>
+            </div>
+            <div class="action-buttons">
+                <button class="icon-btn" onclick="toggleTheme()" title="Mode Sombre">🌙</button>
+                <button class="icon-btn" onclick="resetProgress()" title="Réinitialiser">🔄</button>
+            </div>
         </div>
     </header>
 
     <div class="container" id="quiz-container"></div>
+    <div class="container" id="results-container" style="display: none;"></div>
 
     <script>
         const questions = {q_json};
         const title = "{title}";
         const hasTimer = {str(timer_seconds > 0).lower()};
-        const storageKey = "qcm_js_progress_" + btoa(unescape(encodeURIComponent(title)));
+        const storageKey = "qcm_js_premium_" + btoa(unescape(encodeURIComponent(title)));
         
         let state = {{
             score: 0,
             answered: {{}},
-            timeLeft: {timer_seconds}
+            timeLeft: {timer_seconds},
+            timeUp: false,
+            showResults: false
         }};
 
         // Load progress
         const saved = localStorage.getItem(storageKey);
         if (saved) {{
-            state = JSON.parse(saved);
+            try {{ state = JSON.parse(saved); }}
+            catch(e) {{}}
         }}
 
         const container = document.getElementById('quiz-container');
+        const resultsContainer = document.getElementById('results-container');
         document.getElementById('total-q').textContent = questions.length;
 
         function updateGlobalUI() {{
             const answeredCount = Object.keys(state.answered).length;
-            document.getElementById('progress').style.width = (answeredCount / questions.length * 100) + '%';
-            document.getElementById('current-score').textContent = state.score.toFixed(1);
+            const progressPercent = (answeredCount / questions.length * 100);
+            document.getElementById('progress').style.width = progressPercent + '%';
+            document.getElementById('current-score').textContent = state.score;
+            document.getElementById('answered-count').textContent = answeredCount;
+            
+            // Check if all answered
+            if (answeredCount === questions.length && !state.showResults) {{
+                setTimeout(showResults, 500);
+            }}
         }}
 
         function renderQuiz() {{
+            if (state.showResults) {{
+                showResults();
+                return;
+            }}
+            
             container.innerHTML = '';
+            resultsContainer.style.display = 'none';
+            container.style.display = 'block';
+            
             questions.forEach((q, idx) => {{
                 const card = document.createElement('div');
                 card.className = 'card';
+                if (state.answered[idx] !== undefined) card.classList.add('answered');
                 card.id = 'q-' + idx;
                 
                 const isAnswered = state.answered[idx] !== undefined;
                 const userSelected = isAnswered ? state.answered[idx].selected : (window.tempSelections && window.tempSelections[idx] ? window.tempSelections[idx] : []);
+                const correctAnswers = q.ans.split('');
 
                 let optionsHtml = '';
                 q.opts.forEach((opt, oIdx) => {{
                     const letter = String.fromCharCode(65 + oIdx);
                     let optClass = 'option';
+                    
                     if (isAnswered) {{
-                        if (q.ans.includes(letter)) optClass += ' correct-opt';
-                        else if (userSelected.includes(letter)) optClass += ' incorrect-opt';
+                        if (correctAnswers.includes(letter)) optClass += ' correct';
+                        else if (userSelected.includes(letter)) optClass += ' incorrect';
                     }} else if (userSelected.includes(letter)) {{
                         optClass += ' selected';
                     }}
 
                     optionsHtml += `
                         <div class="${{optClass}}" onclick="toggleOption(${{idx}}, '${{letter}}')">
-                            <input type="checkbox" id="q${{idx}}o${{oIdx}}" 
+                            <input type="checkbox" 
                                 ${{userSelected.includes(letter) ? 'checked' : ''}} 
-                                ${{isAnswered ? 'disabled' : ''}}>
-                            <span>${{letter}}. ${{opt}}</span>
+                                ${{isAnswered || state.timeUp ? 'disabled' : ''}}>
+                            <span class="option-letter">${{letter}}</span>
+                            <span>${{opt}}</span>
                         </div>
                     `;
                 }});
 
+                const isCorrect = isAnswered && state.answered[idx].score === 1;
+                const statusEmoji = isAnswered ? (isCorrect ? '✅' : '❌') : '';
+
                 card.innerHTML = `
-                    <div class="question-text">Q${{idx + 1}}. ${{q.text}}</div>
+                    <div class="question-header">
+                        <span class="question-number">Question ${{idx + 1}} / ${{questions.length}}</span>
+                        <span class="question-status">${{statusEmoji}}</span>
+                    </div>
+                    <div class="question-text">${{q.text}}</div>
                     <div class="options">${{optionsHtml}}</div>
                     <button class="btn" id="btn-${{idx}}" 
                         onclick="validateQuestion(${{idx}})"
-                        ${{isAnswered || userSelected.length === 0 ? 'disabled' : ''}}>
-                        Valider
+                        ${{isAnswered || state.timeUp || userSelected.length === 0 ? 'disabled' : ''}}>
+                        ✓ Valider ma réponse
                     </button>
-                    <div class="feedback ${{isAnswered ? (state.answered[idx].score > 0 ? 'correct' : 'incorrect') : ''}}" 
-                        style="display: ${{isAnswered ? 'block' : 'none'}}">
-                        <strong>${{isAnswered ? (state.answered[idx].score === 1 ? 'Correct !' : (state.answered[idx].score > 0 ? 'Partiellement correct' : 'Incorrect')) : ''}}</strong>
-                        <div class="explanation">💡 ${{q.expl}}</div>
-                    </div>
+                    ${{isAnswered ? `
+                        <div class="feedback ${{isCorrect ? 'correct' : 'incorrect'}}">
+                            <div class="feedback-title">
+                                ${{isCorrect ? '✅ Excellent !' : '❌ Incorrect'}}
+                            </div>
+                            <div class="explanation">💡 ${{q.expl}}</div>
+                        </div>
+                    ` : ''}}
                 `;
                 container.appendChild(card);
             }});
@@ -1352,12 +1734,15 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
             if (state.answered[qIdx] || state.timeUp) return;
             if (!window.tempSelections) window.tempSelections = {{}};
             if (!window.tempSelections[qIdx]) window.tempSelections[qIdx] = [];
+            
             const idx = window.tempSelections[qIdx].indexOf(letter);
             if (idx > -1) window.tempSelections[qIdx].splice(idx, 1);
             else window.tempSelections[qIdx].push(letter);
+            
             const card = document.getElementById('q-' + qIdx);
             const btn = document.getElementById('btn-' + qIdx);
             btn.disabled = window.tempSelections[qIdx].length === 0;
+            
             const opts = card.querySelectorAll('.option');
             opts.forEach((o, i) => {{
                 const l = String.fromCharCode(65 + i);
@@ -1371,18 +1756,26 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
             if (state.timeUp) return;
             const selected = window.tempSelections ? window.tempSelections[idx] : [];
             if (!selected || selected.length === 0) return;
-            const correctAnswers = questions[idx].ans.split('');
-            let correctFound = 0; let wrongFound = 0;
-            selected.forEach(l => {{
-                if (correctAnswers.includes(l)) correctFound++;
-                else wrongFound++;
-            }});
-            let points = (correctFound / correctAnswers.length) - (wrongFound * 0.5);
-            points = Math.max(0, points); if (points \u003e 0.99) points = 1;
+            
+            const correctAnswers = questions[idx].ans.split('').sort();
+            const userAnswers = selected.sort();
+            
+            // ALL OR NOTHING scoring
+            const isCorrect = JSON.stringify(correctAnswers) === JSON.stringify(userAnswers);
+            const points = isCorrect ? 1 : 0;
+            
             state.answered[idx] = {{ selected: selected, score: points }};
             state.score += points;
             localStorage.setItem(storageKey, JSON.stringify(state));
             renderQuiz();
+            
+            // Scroll to next unanswered question
+            setTimeout(() => {{
+                const nextUnanswered = questions.findIndex((q, i) => state.answered[i] === undefined);
+                if (nextUnanswered !== -1) {{
+                    document.getElementById('q-' + nextUnanswered)?.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+                }}
+            }}, 300);
         }};
         
         window.resetProgress = function() {{
@@ -1390,6 +1783,85 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
                 localStorage.removeItem(storageKey);
                 location.reload();
             }}
+        }};
+
+        window.toggleTheme = function() {{
+            const current = document.body.getAttribute('data-theme');
+            const newTheme = current === 'dark' ? '' : 'dark';
+            document.body.setAttribute('data-theme', newTheme);
+            localStorage.setItem('qcm_theme', newTheme);
+        }};
+
+        function showResults() {{
+            state.showResults = true;
+            localStorage.setItem(storageKey, JSON.stringify(state));
+            
+            container.style.display = 'none';
+            resultsContainer.style.display = 'block';
+            
+            const percentage = (state.score / questions.length * 100).toFixed(1);
+            const correctCount = state.score;
+            const incorrectCount = questions.length - state.score;
+            
+            let emoji = '🎉';
+            let message = 'Excellent travail !';
+            let titleText = 'Félicitations !';
+            
+            if (percentage >= 90) {{
+                emoji = '🏆';
+                message = 'Performance exceptionnelle ! Vous maîtrisez parfaitement ce sujet.';
+                titleText = 'Résultat Exceptionnel !';
+            }} else if (percentage >= 75) {{
+                emoji = '🌟';
+                message = 'Très bonne performance ! Continuez ainsi.';
+                titleText = 'Très Bien !';
+            }} else if (percentage >= 50) {{
+                emoji = '👍';
+                message = 'Bon résultat. Il y a encore quelques points à réviser.';
+                titleText = 'Pas mal !';
+            }} else {{
+                emoji = '📚';
+                message = 'Continuez à travailler. La pratique vous aidera à progresser.';
+                titleText = 'À réviser';
+            }}
+
+            resultsContainer.innerHTML = `
+                <div class="results-page">
+                    <div class="results-card">
+                        <div class="results-icon">${{emoji}}</div>
+                        <div class="results-title">${{titleText}}</div>
+                        <div class="results-score">${{percentage}}%</div>
+                        
+                        <div class="results-stats">
+                            <div class="results-stat">
+                                <div class="results-stat-value">${{correctCount}}</div>
+                                <div class="results-stat-label">✅ Correctes</div>
+                            </div>
+                            <div class="results-stat">
+                                <div class="results-stat-value">${{incorrectCount}}</div>
+                                <div class="results-stat-label">❌ Incorrectes</div>
+                            </div>
+                            <div class="results-stat">
+                                <div class="results-stat-value">${{questions.length}}</div>
+                                <div class="results-stat-label">📝 Total</div>
+                            </div>
+                        </div>
+                        
+                        <div class="results-message">${{message}}</div>
+                        
+                        <div class="results-actions">
+                            <button class="btn" onclick="reviewAnswers()">👁️ Revoir les réponses</button>
+                            <button class="btn btn-secondary" onclick="window.print()">🖨️ Imprimer le résultat</button>
+                            <button class="btn btn-secondary" onclick="resetProgress()">🔄 Recommencer</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }}
+
+        window.reviewAnswers = function() {{
+            state.showResults = false;
+            renderQuiz();
         }};
 
         function revealAll() {{
@@ -1421,6 +1893,10 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
             const timerEl = document.getElementById('timer');
             if(timerEl) timerEl.textContent = "00:00";
         }}
+
+        // Load theme preference
+        const savedTheme = localStorage.getItem('qcm_theme');
+        if (savedTheme) document.body.setAttribute('data-theme', savedTheme);
 
         renderQuiz();
     </script>
