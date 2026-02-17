@@ -1175,8 +1175,11 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
         :root {{
             --primary: #3b82f6;
             --primary-dark: #2563eb;
+            --primary-light: #60a5fa;
             --success: #10b981;
+            --success-dark: #059669;
             --danger: #ef4444;
+            --danger-dark: #dc2626;
             --warning: #f59e0b;
             --bg: #f8fafc;
             --card-bg: #ffffff;
@@ -1184,6 +1187,9 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
             --text-secondary: #64748b;
             --border: #e2e8f0;
             --shadow: rgba(0, 0, 0, 0.1);
+            --shadow-lg: rgba(0, 0, 0, 0.15);
+            --radius: 12px;
+            --radius-lg: 16px;
         }}
         
         [data-theme="dark"] {{
@@ -1193,27 +1199,42 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
             --text-secondary: #94a3b8;
             --border: #334155;
             --shadow: rgba(0, 0, 0, 0.3);
+            --shadow-lg: rgba(0, 0, 0, 0.5);
         }}
         
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        * {{ 
+            margin: 0; 
+            padding: 0; 
+            box-sizing: border-box; 
+            -webkit-tap-highlight-color: transparent;
+        }}
+        
+        html {{
+            scroll-behavior: smooth;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }}
         
         body {{
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
             background: var(--bg);
             color: var(--text);
             line-height: 1.6;
-            transition: background-color 0.3s, color 0.3s;
+            transition: background-color 0.3s ease, color 0.3s ease;
+            overflow-x: hidden;
         }}
         
+        /* ===== HEADER ===== */
         header {{
             background: var(--card-bg);
             padding: 1rem 1.5rem;
             border-bottom: 1px solid var(--border);
             position: sticky;
             top: 0;
-            z-index: 100;
-            box-shadow: 0 2px 8px var(--shadow);
-            transition: all 0.3s;
+            z-index: 1000;
+            box-shadow: 0 4px 12px var(--shadow);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
         }}
         
         .header-content {{
@@ -1222,24 +1243,26 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
             display: flex;
             justify-content: space-between;
             align-items: center;
-            flex-wrap: wrap;
             gap: 1rem;
         }}
         
         .header-title {{
             flex: 1;
-            min-width: 200px;
+            min-width: 150px;
         }}
         
         h1 {{
-            font-size: 1.5rem;
+            font-size: clamp(1.125rem, 4vw, 1.5rem);
             font-weight: 700;
-            color: var(--primary);
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
             margin-bottom: 0.5rem;
+            letter-spacing: -0.02em;
         }}
         
         .progress-container {{
-            height: 8px;
+            height: 6px;
             background: var(--border);
             border-radius: 999px;
             overflow: hidden;
@@ -1249,40 +1272,42 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
         .progress-bar {{
             height: 100%;
             background: linear-gradient(90deg, var(--success), var(--primary));
-            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
             border-radius: 999px;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
         }}
         
         .header-stats {{
             display: flex;
-            gap: 1.5rem;
+            gap: clamp(0.75rem, 2vw, 1.5rem);
             align-items: center;
-            flex-wrap: wrap;
         }}
         
         .stat-box {{
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 0.25rem;
+            gap: 0.125rem;
         }}
         
         .stat-label {{
-            font-size: 0.75rem;
+            font-size: 0.625rem;
             color: var(--text-secondary);
             text-transform: uppercase;
             letter-spacing: 0.05em;
+            font-weight: 600;
         }}
         
         .stat-value {{
-            font-size: 1.25rem;
+            font-size: clamp(1rem, 3vw, 1.25rem);
             font-weight: 700;
             color: var(--primary);
+            font-variant-numeric: tabular-nums;
         }}
         
         .timer-box .stat-value {{
             color: var(--danger);
-            font-family: 'Courier New', monospace;
+            font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
         }}
         
         .action-buttons {{
@@ -1291,9 +1316,11 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
         }}
         
         .icon-btn {{
-            width: 40px;
-            height: 40px;
-            border-radius: 8px;
+            min-width: 44px;
+            min-height: 44px;
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
             border: none;
             background: var(--border);
             color: var(--text);
@@ -1302,33 +1329,41 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
             align-items: center;
             justify-content: center;
             font-size: 1.25rem;
-            transition: all 0.2s;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            user-select: none;
+        }}
+        
+        .icon-btn:active {{
+            transform: scale(0.95);
         }}
         
         .icon-btn:hover {{
             background: var(--primary);
             color: white;
-            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
         }}
         
+        /* ===== CONTAINER ===== */
         .container {{
             max-width: 900px;
-            margin: 2rem auto;
-            padding: 0 1rem;
+            margin: 0 auto;
+            padding: clamp(1rem, 3vw, 2rem) 1rem;
         }}
         
+        /* ===== CARDS ===== */
         .card {{
             background: var(--card-bg);
             border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 2rem;
-            margin-bottom: 1.5rem;
-            box-shadow: 0 2px 8px var(--shadow);
-            transition: all 0.3s;
+            border-radius: var(--radius);
+            padding: clamp(1.25rem, 4vw, 2rem);
+            margin-bottom: clamp(1rem, 3vw, 1.5rem);
+            box-shadow: 0 2px 8px var(--shadow), 0 0 0 1px rgba(0,0,0,0.02);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }}
         
         .card.answered {{
-            opacity: 0.95;
+            opacity: 0.92;
+            border-color: var(--success);
         }}
         
         .question-header {{
@@ -1336,28 +1371,38 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
             justify-content: space-between;
             align-items: center;
             margin-bottom: 1rem;
+            gap: 0.5rem;
         }}
         
         .question-number {{
-            font-size: 0.875rem;
-            font-weight: 600;
+            font-size: 0.75rem;
+            font-weight: 700;
             color: var(--text-secondary);
             background: var(--border);
-            padding: 0.25rem 0.75rem;
+            padding: 0.375rem 0.875rem;
             border-radius: 999px;
+            letter-spacing: 0.02em;
         }}
         
         .question-status {{
-            font-size: 1.25rem;
+            font-size: 1.5rem;
+            animation: popIn 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        }}
+        
+        @keyframes popIn {{
+            0% {{ transform: scale(0); opacity: 0; }}
+            100% {{ transform: scale(1); opacity: 1; }}
         }}
         
         .question-text {{
-            font-size: 1.125rem;
+            font-size: clamp(1rem, 3vw, 1.125rem);
             font-weight: 600;
             margin-bottom: 1.5rem;
             line-height: 1.7;
+            color: var(--text);
         }}
         
+        /* ===== OPTIONS ===== */
         .options {{
             display: flex;
             flex-direction: column;
@@ -1372,9 +1417,11 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
             border: 2px solid var(--border);
             border-radius: 10px;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
             overflow: hidden;
+            user-select: none;
+            min-height: 52px;
         }}
         
         .option::before {{
@@ -1386,92 +1433,131 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
             width: 0;
             background: var(--primary);
             opacity: 0.05;
-            transition: width 0.2s;
+            transition: width 0.2s ease;
         }}
         
-        .option:hover::before {{
+        .option:active {{
+            transform: scale(0.98);
+        }}
+        
+        .option:hover:not(.correct):not(.incorrect)::before {{
             width: 100%;
         }}
         
-        .option:hover {{
-            border-color: var(--primary);
-            transform: translateX(4px);
+        .option:hover:not(.correct):not(.incorrect) {{
+            border-color: var(--primary-light);
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15);
         }}
         
         .option.selected {{
             border-color: var(--primary);
-            background: linear-gradient(to right, rgba(59, 130, 246, 0.1), transparent);
+            background: linear-gradient(to right, rgba(59, 130, 246, 0.08), transparent);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
         }}
         
         .option.correct {{
             border-color: var(--success);
-            background: linear-gradient(to right, rgba(16, 185, 129, 0.15), transparent);
+            background: linear-gradient(to right, rgba(16, 185, 129, 0.12), transparent);
+            animation: correctPulse 0.5s ease;
         }}
         
         .option.incorrect {{
             border-color: var(--danger);
-            background: linear-gradient(to right, rgba(239, 68, 68, 0.15), transparent);
+            background: linear-gradient(to right, rgba(239, 68, 68, 0.12), transparent);
+            animation: shake 0.4s ease;
+        }}
+        
+        @keyframes correctPulse {{
+            0%, 100% {{ transform: scale(1); }}
+            50% {{ transform: scale(1.02); }}
+        }}
+        
+        @keyframes shake {{
+            0%, 100% {{ transform: translateX(0); }}
+            25% {{ transform: translateX(-5px); }}
+            75% {{ transform: translateX(5px); }}
         }}
         
         .option input[type="checkbox"] {{
-            width: 20px;
-            height: 20px;
+            width: 22px;
+            height: 22px;
             accent-color: var(--primary);
             cursor: pointer;
+            flex-shrink: 0;
         }}
         
         .option-letter {{
             font-weight: 700;
             color: var(--primary);
-            min-width: 24px;
+            min-width: 28px;
+            font-size: 1.125rem;
+            flex-shrink: 0;
         }}
         
+        .option-text {{
+            flex: 1;
+            line-height: 1.5;
+        }}
+        
+        /* ===== BUTTONS ===== */
         .btn {{
             background: var(--primary);
             color: white;
-            padding: 0.75rem 1.5rem;
-            border-radius: 8px;
+            padding: 0.875rem 1.75rem;
+            border-radius: 10px;
             border: none;
             font-size: 1rem;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.2s;
-            display: inline-block;
-            margin-top: 1rem;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-top: 1.25rem;
+            min-height: 48px;
+            user-select: none;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+        }}
+        
+        .btn:active:not(:disabled) {{
+            transform: translateY(1px) scale(0.98);
         }}
         
         .btn:hover:not(:disabled) {{
             background: var(--primary-dark);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
         }}
         
         .btn:disabled {{
             opacity: 0.5;
             cursor: not-allowed;
+            box-shadow: none;
         }}
         
+        /* ===== FEEDBACK ===== */
         .feedback {{
             margin-top: 1.5rem;
             padding: 1.25rem;
             border-radius: 10px;
             border-left: 4px solid;
-            animation: slideIn 0.3s ease;
+            animation: slideInUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         }}
         
-        @keyframes slideIn {{
-            from {{ opacity: 0; transform: translateY(-10px); }}
+        @keyframes slideInUp {{
+            from {{ opacity: 0; transform: translateY(10px); }}
             to {{ opacity: 1; transform: translateY(0); }}
         }}
         
         .feedback.correct {{
-            background: #d1fae5;
+            background: linear-gradient(to right, #d1fae5, #ecfdf5);
             border-color: var(--success);
             color: #065f46;
         }}
         
         .feedback.incorrect {{
-            background: #fee2e2;
+            background: linear-gradient(to right, #fee2e2, #fef2f2);
             border-color: var(--danger);
             color: #991b1b;
         }}
@@ -1489,57 +1575,78 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
             font-style: italic;
             margin-top: 0.5rem;
             opacity: 0.9;
+            line-height: 1.6;
         }}
         
+        /* ===== RESULTS PAGE ===== */
         .results-page {{
             text-align: center;
-            padding: 3rem 1rem;
+            padding: clamp(2rem, 5vw, 3rem) 1rem;
+            animation: fadeIn 0.5s ease;
+        }}
+        
+        @keyframes fadeIn {{
+            from {{ opacity: 0; }}
+            to {{ opacity: 1; }}
         }}
         
         .results-card {{
             background: var(--card-bg);
-            border-radius: 16px;
-            padding: 3rem;
-            box-shadow: 0 8px 24px var(--shadow);
+            border-radius: var(--radius-lg);
+            padding: clamp(2rem, 5vw, 3rem);
+            box-shadow: 0 8px 32px var(--shadow-lg);
             max-width: 600px;
             margin: 0 auto;
         }}
         
         .results-icon {{
-            font-size: 5rem;
+            font-size: clamp(3rem, 10vw, 5rem);
             margin-bottom: 1rem;
+            animation: bounceIn 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        }}
+        
+        @keyframes bounceIn {{
+            0% {{ transform: scale(0); }}
+            50% {{ transform: scale(1.1); }}
+            100% {{ transform: scale(1); }}
         }}
         
         .results-title {{
-            font-size: 2rem;
+            font-size: clamp(1.5rem, 5vw, 2rem);
             font-weight: 700;
             margin-bottom: 0.5rem;
         }}
         
         .results-score {{
-            font-size: 4rem;
+            font-size: clamp(2.5rem, 10vw, 4rem);
             font-weight: 800;
             background: linear-gradient(135deg, var(--primary), var(--success));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             margin: 1rem 0;
+            font-variant-numeric: tabular-nums;
         }}
         
         .results-stats {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
             gap: 1rem;
             margin: 2rem 0;
         }}
         
         .results-stat {{
-            padding: 1rem;
+            padding: 1.25rem 1rem;
             background: var(--border);
             border-radius: 10px;
+            transition: transform 0.2s ease;
+        }}
+        
+        .results-stat:hover {{
+            transform: translateY(-2px);
         }}
         
         .results-stat-value {{
-            font-size: 1.5rem;
+            font-size: clamp(1.25rem, 4vw, 1.5rem);
             font-weight: 700;
             color: var(--primary);
         }}
@@ -1551,14 +1658,15 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
         }}
         
         .results-message {{
-            font-size: 1.125rem;
+            font-size: clamp(1rem, 3vw, 1.125rem);
             color: var(--text-secondary);
             margin: 1.5rem 0;
+            line-height: 1.6;
         }}
         
         .results-actions {{
             display: flex;
-            gap: 1rem;
+            gap: 0.75rem;
             justify-content: center;
             margin-top: 2rem;
             flex-wrap: wrap;
@@ -1567,26 +1675,104 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
         .btn-secondary {{
             background: var(--border);
             color: var(--text);
+            box-shadow: 0 2px 8px var(--shadow);
         }}
         
         .btn-secondary:hover {{
             background: var(--text-secondary);
             color: white;
+            box-shadow: 0 4px 12px rgba(100, 116, 139, 0.4);
         }}
         
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 768px) {{
+            header {{
+                padding: 0.875rem 1rem;
+            }}
+            
+            .header-content {{
+                flex-wrap: wrap;
+            }}
+            
+            .header-title {{
+                width: 100%;
+                margin-bottom: 0.5rem;
+            }}
+            
+            .header-stats {{
+                flex: 1;
+                justify-content: flex-start;
+            }}
+            
+            .stat-box {{
+                min-width: 60px;
+            }}
+            
+            .card {{
+                border-radius: 10px;
+            }}
+            
+            .option {{
+                padding: 0.875rem 1rem;
+                gap: 0.75rem;
+            }}
+            
+            .results-actions {{
+                flex-direction: column;
+            }}
+            
+            .results-actions .btn {{
+                width: 100%;
+            }}
+        }}
+        
+        @media (max-width: 480px) {{
+            .action-buttons {{
+                position: fixed;
+                bottom: 1rem;
+                right: 1rem;
+                flex-direction: column;
+                gap: 0.5rem;
+                z-index: 999;
+            }}
+            
+            .icon-btn {{
+                box-shadow: 0 4px 12px var(--shadow-lg);
+            }}
+            
+            .stat-label {{
+                font-size: 0.5rem;
+            }}
+            
+            .option {{
+                font-size: 0.9375rem;
+            }}
+        }}
+        
+        /* ===== PRINT ===== */
         @media print {{
             header, .action-buttons, .btn {{ display: none !important; }}
             body {{ background: white !important; }}
-            .card {{ page-break-inside: avoid; box-shadow: none; border: 1px solid #ddd; }}
+            .card {{ 
+                page-break-inside: avoid; 
+                box-shadow: none; 
+                border: 1px solid #ddd; 
+                margin-bottom: 1.5rem;
+            }}
+            .option {{ border: 1px solid #ddd; }}
+            * {{ color: black !important; }}
         }}
         
-        @media (max-width: 640px) {{
-            header {{ padding: 1rem; }}
-            .header-content {{ flex-direction: column; align-items: stretch; }}
-            .header-stats {{ justify-content: space-around; }}
-            h1 {{ font-size: 1.25rem; }}
-            .card {{ padding: 1.5rem; }}
-            .results-score {{ font-size: 3rem; }}
+        /* ===== UTILITIES ===== */
+        .no-select {{
+            user-select: none;
+            -webkit-user-select: none;
+        }}
+        
+        /* Loading state */
+        .loading {{
+            opacity: 0.6;
+            pointer-events: none;
         }}
     </style>
 </head>
@@ -1696,7 +1882,7 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
                                 ${{userSelected.includes(letter) ? 'checked' : ''}} 
                                 ${{isAnswered || state.timeUp ? 'disabled' : ''}}>
                             <span class="option-letter">${{letter}}</span>
-                            <span>${{opt}}</span>
+                            <span class="option-text">${{opt}}</span>
                         </div>
                     `;
                 }});
