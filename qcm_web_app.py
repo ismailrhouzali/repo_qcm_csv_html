@@ -1173,21 +1173,21 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
     <title>{title} - Quiz Interactif Premium</title>
     <style>
         :root {{
-            --primary: #3b82f6;
-            --primary-dark: #2563eb;
-            --primary-light: #60a5fa;
-            --success: #10b981;
-            --success-dark: #059669;
-            --danger: #ef4444;
-            --danger-dark: #dc2626;
-            --warning: #f59e0b;
-            --bg: #f8fafc;
+            --primary: #1a365d;
+            --primary-dark: #0f2644;
+            --primary-light: #2c5282;
+            --success: #2f855a;
+            --success-dark: #276749;
+            --danger: #c53030;
+            --danger-dark: #9b2c2c;
+            --warning: #d69e2e;
+            --bg: #fafaf9;
             --card-bg: #ffffff;
-            --text: #1e293b;
-            --text-secondary: #64748b;
+            --text: #1a202c;
+            --text-secondary: #4a5568;
             --border: #e2e8f0;
-            --shadow: rgba(0, 0, 0, 0.1);
-            --shadow-lg: rgba(0, 0, 0, 0.15);
+            --shadow: rgba(0, 0, 0, 0.08);
+            --shadow-lg: rgba(0, 0, 0, 0.12);
             --radius: 12px;
             --radius-lg: 16px;
         }}
@@ -1216,10 +1216,10 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
         }}
         
         body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+            font-family: Georgia, 'Times New Roman', Times, serif;
             background: var(--bg);
             color: var(--text);
-            line-height: 1.6;
+            line-height: 1.8;
             transition: background-color 0.3s ease, color 0.3s ease;
             overflow-x: hidden;
         }}
@@ -1228,12 +1228,11 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
         header {{
             background: var(--card-bg);
             padding: 1rem 1.5rem;
-            border-bottom: 1px solid var(--border);
+            border-bottom: 2px solid var(--border);
             position: sticky;
             top: 0;
             z-index: 1000;
-            box-shadow: 0 4px 12px var(--shadow);
-            backdrop-filter: blur(10px);
+            box-shadow: 0 1px 3px var(--shadow);
             transition: all 0.3s ease;
         }}
         
@@ -1253,12 +1252,10 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
         
         h1 {{
             font-size: clamp(1.125rem, 4vw, 1.5rem);
-            font-weight: 700;
-            background: linear-gradient(135deg, var(--primary), var(--primary-light));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            font-weight: 600;
+            color: var(--primary);
             margin-bottom: 0.5rem;
-            letter-spacing: -0.02em;
+            letter-spacing: 0.01em;
         }}
         
         .progress-container {{
@@ -1271,10 +1268,9 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
         
         .progress-bar {{
             height: 100%;
-            background: linear-gradient(90deg, var(--success), var(--primary));
+            background: var(--success);
             transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
             border-radius: 999px;
-            box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
         }}
         
         .header-stats {{
@@ -1340,7 +1336,6 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
         .icon-btn:hover {{
             background: var(--primary);
             color: white;
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
         }}
         
         /* ===== CONTAINER ===== */
@@ -1446,24 +1441,22 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
         
         .option:hover:not(.correct):not(.incorrect) {{
             border-color: var(--primary-light);
-            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15);
         }}
         
         .option.selected {{
             border-color: var(--primary);
-            background: linear-gradient(to right, rgba(59, 130, 246, 0.08), transparent);
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+            background: rgba(26, 54, 93, 0.05);
         }}
         
         .option.correct {{
             border-color: var(--success);
-            background: linear-gradient(to right, rgba(16, 185, 129, 0.12), transparent);
+            background: rgba(47, 133, 90, 0.08);
             animation: correctPulse 0.5s ease;
         }}
         
         .option.incorrect {{
             border-color: var(--danger);
-            background: linear-gradient(to right, rgba(239, 68, 68, 0.12), transparent);
+            background: rgba(197, 48, 48, 0.08);
             animation: shake 0.4s ease;
         }}
         
@@ -1526,8 +1519,7 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
         
         .btn:hover:not(:disabled) {{
             background: var(--primary-dark);
-            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
-            transform: translateY(-2px);
+            transform: translateY(-1px);
         }}
         
         .btn:disabled {{
@@ -1551,15 +1543,15 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
         }}
         
         .feedback.correct {{
-            background: linear-gradient(to right, #d1fae5, #ecfdf5);
+            background: #e6f4ea;
             border-color: var(--success);
-            color: #065f46;
+            color: #1e4620;
         }}
         
         .feedback.incorrect {{
-            background: linear-gradient(to right, #fee2e2, #fef2f2);
+            background: #fce8e6;
             border-color: var(--danger);
-            color: #991b1b;
+            color: #5f2120;
         }}
         
         .feedback-title {{
@@ -1619,10 +1611,8 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
         
         .results-score {{
             font-size: clamp(2.5rem, 10vw, 4rem);
-            font-weight: 800;
-            background: linear-gradient(135deg, var(--primary), var(--success));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            font-weight: 700;
+            color: var(--primary);
             margin: 1rem 0;
             font-variant-numeric: tabular-nums;
         }}
@@ -1954,14 +1944,6 @@ def generate_js_quiz_html(content, title, timer_seconds=0):
             state.score += points;
             localStorage.setItem(storageKey, JSON.stringify(state));
             renderQuiz();
-            
-            // Scroll to next unanswered question
-            setTimeout(() => {{
-                const nextUnanswered = questions.findIndex((q, i) => state.answered[i] === undefined);
-                if (nextUnanswered !== -1) {{
-                    document.getElementById('q-' + nextUnanswered)?.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
-                }}
-            }}, 300);
         }};
         
         window.resetProgress = function() {{
